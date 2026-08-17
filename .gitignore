@@ -60,7 +60,6 @@ RELEASE.md
 .verdaccio-cache
 .turbo
 .eslintcache
-.claude
 .local-settings
 .pnpm-typecheck.json
 
