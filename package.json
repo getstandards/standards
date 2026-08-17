@@ -1,0 +1,69 @@
+{
+	"name": "standards",
+	"version": "0.0.1",
+	"description": "Standards turns your engineering rules into code an agent can enforce on every pull request",
+	"type": "module",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./config": "./dist/config/index.js",
+		"./lockfile": "./dist/lockfile/index.js"
+	},
+	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
+	"bin": {
+		"standards": "./dist/cli/index.js"
+	},
+	"scripts": {
+		"build": "pnpm run build:action",
+		"build:action": "tsc --project tsconfig.build.json && ncc build dist/action/main.js -o dist/action --no-source-map-register --license licenses.txt",
+		"check": "biome check src package.json tsconfig.json tsconfig.build.json && tsc --noEmit",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"standards",
+		"code-review",
+		"ai-code-review",
+		"rfc2119",
+		"linter",
+		"governance",
+		"policy-as-code",
+		"engineering-standards",
+		"pull-request",
+		"github-action",
+		"static-analysis",
+		"code-quality",
+		"llm",
+		"agent",
+		"yaml",
+		"compliance"
+	],
+	"dependencies": {
+		"@octokit/rest": "^22.0.1",
+		"yaml": "^2.9.0",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.8",
+		"@types/node": "^26.2.0",
+		"@vercel/ncc": "^0.45.0",
+		"typescript": "^7.0.2",
+		"vitest": "^4.1.10"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nlecoy/standards.git"
+	},
+	"license": "AGPL-3.0-only",
+	"bugs": {
+		"url": "https://github.com/nlecoy/standards/issues"
+	},
+	"engines": {
+		"node": "^24.11.0",
+		"pnpm": "^11.0.0"
+	},
+	"packageManager": "pnpm@11.20.0",
+	"files": [
+		"dist",
+		"schemas"
+	]
+}

@@ -1,0 +1,23 @@
+name: "Standards"
+description: "Your engineering standards, written once and enforced everywhere."
+author: "Nicolas Lecoy <nicolas.lecoy@gmail.com>"
+
+inputs:
+  anthropic-api-key:
+    description: "Anthropic API key (sk-ant-...) or OAuth token. Can also be set via ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env vars."
+    required: false
+  github-token:
+    description: "GitHub token for API access (defaults to GITHUB_TOKEN)"
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run Standards"
+      id: standards
+      shell: bash
+      env:
+        INPUT_ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node ${{ github.action_path }}/dist/action/index.js

@@ -1,0 +1,7 @@
+---
+version: 1
+sources:
+  - repository: https://github.com/nlecoy/standards-old
+    revision:
+      branch: chore/pull
+    commit: 82ea45b479ead689b38b7a832994a6fb2d8e26b0

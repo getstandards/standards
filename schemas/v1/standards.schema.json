@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Standards configuration",
+  "description": "Version 1 of the .standards.yml configuration format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "extends": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/extensionSource"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "httpsRepository": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://(?![^/]*@)",
+      "description": "HTTPS Git repository URL without embedded credentials."
+    },
+    "commitId": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$",
+      "description": "Full SHA-1 or SHA-256 Git commit object ID."
+    },
+    "tagName": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^refs/tags/"
+      }
+    },
+    "branchName": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^refs/heads/"
+      }
+    },
+    "commitRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit"],
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/commitId"
+        }
+      }
+    },
+    "tagRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag"],
+      "properties": {
+        "tag": {
+          "$ref": "#/$defs/tagName"
+        }
+      }
+    },
+    "branchRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch"],
+      "properties": {
+        "branch": {
+          "$ref": "#/$defs/branchName"
+        }
+      }
+    },
+    "revision": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/commitRevision"
+        },
+        {
+          "$ref": "#/$defs/tagRevision"
+        },
+        {
+          "$ref": "#/$defs/branchRevision"
+        }
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+",
+      "description": "Relative path. Repository-boundary checks happen during resolution."
+    },
+    "localSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "gitSourceDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "path"],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/httpsRepository"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "gitSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git"],
+      "properties": {
+        "git": {
+          "$ref": "#/$defs/gitSourceDetails"
+        }
+      }
+    },
+    "extensionSource": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/localSource"
+        },
+        {
+          "$ref": "#/$defs/gitSource"
+        }
+      ]
+    },
+    "requirementLevel": {
+      "enum": ["MUST", "MUST NOT", "SHOULD", "SHOULD NOT", "MAY"]
+    },
+    "glob": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!\\.\\.?(?:/|$))(?!.*\\/\\.\\.?(?:/|$))(?!.*\\\\).+"
+    },
+    "appliesTo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/glob"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/glob"
+          }
+        }
+      }
+    },
+    "ruleId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "level", "description", "rationale"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ruleId"
+        },
+        "level": {
+          "$ref": "#/$defs/requirementLevel"
+        },
+        "description": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "applies_to": {
+          "$ref": "#/$defs/appliesTo"
+        },
+        "guidance": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
