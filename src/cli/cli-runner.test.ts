@@ -227,4 +227,54 @@ Next action:
 		expect(stdout).toEqual([]);
 		expect(stderr[0]).toContain("Unknown option '--unknown'");
 	});
+
+	it("requires a subcommand for cache", async () => {
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache"], "/unused", output);
+
+		expect(exitStatus).toBe(1);
+		expect(stdout).toEqual([]);
+		expect(stderr[0]).toContain("Command 'cache' requires a subcommand.");
+		expect(stderr[0]).toContain("Usage: standards <command>");
+	});
+
+	it("rejects an unknown cache subcommand", async () => {
+		const { output, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache", "wipe"], "/unused", output);
+
+		expect(exitStatus).toBe(1);
+		expect(stderr[0]).toContain("Unknown command 'cache wipe'.");
+	});
+
+	it("rejects --no-cache on the cache command", async () => {
+		const { output, stderr } = captureOutput();
+
+		const exitStatus = await runCli(
+			["cache", "clean", "--no-cache"],
+			"/unused",
+			output,
+		);
+
+		expect(exitStatus).toBe(1);
+		expect(stderr[0]).toContain(
+			"Command 'cache' does not accept the '--no-cache' option.",
+		);
+	});
+
+	it("rejects cache options on init", async () => {
+		const { output, stderr } = captureOutput();
+
+		const exitStatus = await runCli(
+			["init", "--cache-dir", "/tmp/cache"],
+			"/unused",
+			output,
+		);
+
+		expect(exitStatus).toBe(1);
+		expect(stderr[0]).toContain(
+			"Command 'init' does not accept the '--cache-dir' option.",
+		);
+	});
 });

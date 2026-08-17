@@ -8,4 +8,7 @@ export interface CliOutput {
 export interface CommandContext {
 	workingDirectory: string;
 	output: CliOutput;
+	environment: NodeJS.ProcessEnv;
+	cacheDir?: string;
+	noCache: boolean;
 }

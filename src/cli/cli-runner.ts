@@ -1,6 +1,7 @@
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
-import type { CliOutput } from "./cli-context.js";
+import type { CliOutput, CommandContext } from "./cli-context.js";
 import { renderHelp } from "./cli-help.js";
+import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
 import { runReviewCommand } from "./commands/review.js";
@@ -11,6 +12,7 @@ export async function runCli(
 	arguments_: string[] = process.argv.slice(2),
 	workingDirectory = process.cwd(),
 	output: CliOutput = console,
+	environment: NodeJS.ProcessEnv = process.env,
 ): Promise<number> {
 	let parsedArguments: ReturnType<typeof parseCliArgs>;
 	try {
@@ -22,20 +24,30 @@ export async function runCli(
 		return 1;
 	}
 
-	const { command, help } = parsedArguments;
+	const { command, cacheSubcommand, cacheDir, noCache, help } = parsedArguments;
 	if (command === undefined || help) {
 		output.log(renderHelp());
 		return 0;
 	}
 
+	const context: CommandContext = {
+		workingDirectory,
+		output,
+		environment,
+		cacheDir,
+		noCache,
+	};
+
 	switch (command) {
 		case "init":
 			return runInitCommand();
 		case "validate":
-			return runValidateCommand({ workingDirectory, output });
+			return runValidateCommand(context);
 		case "lock":
-			return runLockCommand({ workingDirectory, output });
+			return runLockCommand(context);
 		case "review":
 			return runReviewCommand();
+		case "cache":
+			return runCacheCommand(context, cacheSubcommand);
 	}
 }

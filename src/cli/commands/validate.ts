@@ -1,5 +1,7 @@
 import { access, realpath } from "node:fs/promises";
 import path from "node:path";
+import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
+import { createImportProgressReporter } from "../../cache/import-progress.js";
 import { loadRules } from "../../config/configuration-resolver.js";
 import { requirementLevels } from "../../config/configuration-schema.js";
 import type { CommandContext } from "../cli-context.js";
@@ -22,9 +24,24 @@ async function pathExists(candidatePath: string): Promise<boolean> {
 export async function runValidateCommand({
 	workingDirectory,
 	output,
+	environment,
+	cacheDir,
+	noCache,
 }: CommandContext): Promise<number> {
+	const gitSourceStore = await openRunGitSourceStore({
+		cacheDir,
+		noCache,
+		environment,
+		reportCacheFallback: (message) => output.error(message),
+	});
+	const reportProgress = createImportProgressReporter((line) =>
+		output.error(line),
+	);
 	try {
-		const rules = await loadRules(workingDirectory);
+		const rules = await loadRules(workingDirectory, {
+			gitSourceStore,
+			reportProgress,
+		});
 		const repositoryRoot = await realpath(workingDirectory);
 		const hasLockfile = await pathExists(
 			path.join(repositoryRoot, LOCK_FILE_NAME),
@@ -49,5 +66,7 @@ export async function runValidateCommand({
 	} catch (error) {
 		output.error(await formatValidationError(error, workingDirectory));
 		return 1;
+	} finally {
+		await gitSourceStore.dispose();
 	}
 }

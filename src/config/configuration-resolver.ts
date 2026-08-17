@@ -1,6 +1,11 @@
-import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
-import os from "node:os";
+import { readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
+import type {
+	GitSourceStore,
+	PopulateGitCheckout,
+} from "../cache/git-source-cache.js";
+import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
+import type { ImportProgressReporter } from "../cache/import-progress.js";
 import { loadLockfile } from "../lockfile/lockfile-loader.js";
 import type { Lockfile } from "../lockfile/lockfile-schema.js";
 import {
@@ -28,6 +33,12 @@ export type MutableRevisionResolver = (
 	repository: string,
 	revision: MutableGitRevision,
 ) => Promise<string> | string;
+
+/** Optional cache and progress inputs for configuration resolution. */
+export interface ResolveConfigurationOptions {
+	gitSourceStore?: GitSourceStore;
+	reportProgress?: ImportProgressReporter;
+}
 
 /** An error found while resolving a Standards configuration graph. */
 export class ConfigurationResolutionError extends Error {
@@ -141,67 +152,77 @@ function resolveLockedGitCommit(
 	return sourceLock.commit.toLowerCase();
 }
 
-/** Fetch and verify one repository at an exact commit. */
-async function fetchGitRepository(
+/**
+ * Populate a destination directory with a verified checkout of one commit,
+ * without the `.git` directory. It throws when the checked-out content does not
+ * match the requested commit object ID, so unverified content never reaches the
+ * cache.
+ */
+function fetchGitCheckout(
 	repository: string,
 	commit: string,
-	temporaryDirectories: string[],
-): Promise<RepositoryContext> {
-	const temporaryCheckoutRoot = await mkdtemp(
-		path.join(os.tmpdir(), "standards-git-source-"),
-	);
-	temporaryDirectories.push(temporaryCheckoutRoot);
-	const checkoutRoot = await realpath(temporaryCheckoutRoot);
-
-	try {
-		await runGit(
-			["clone", "--no-checkout", "--quiet", repository, "."],
-			checkoutRoot,
-		);
-
-		let verifiedCommit: string;
+): PopulateGitCheckout {
+	return async (destinationDirectory) => {
 		try {
-			verifiedCommit = await runGit(
-				["rev-parse", "--verify", `${commit}^{commit}`],
-				checkoutRoot,
-			);
-		} catch {
 			await runGit(
-				["fetch", "--no-tags", "--quiet", "origin", commit],
-				checkoutRoot,
+				["clone", "--no-checkout", "--quiet", repository, "."],
+				destinationDirectory,
 			);
-			verifiedCommit = await runGit(
-				["rev-parse", "--verify", `${commit}^{commit}`],
-				checkoutRoot,
+
+			let verifiedCommit: string;
+			try {
+				verifiedCommit = await runGit(
+					["rev-parse", "--verify", `${commit}^{commit}`],
+					destinationDirectory,
+				);
+			} catch {
+				await runGit(
+					["fetch", "--no-tags", "--quiet", "origin", commit],
+					destinationDirectory,
+				);
+				verifiedCommit = await runGit(
+					["rev-parse", "--verify", `${commit}^{commit}`],
+					destinationDirectory,
+				);
+			}
+
+			if (verifiedCommit.toLowerCase() !== commit) {
+				throw new Error(
+					`Object '${commit}' resolves to different commit '${verifiedCommit}'.`,
+				);
+			}
+
+			await runGit(
+				["checkout", "--detach", "--quiet", commit],
+				destinationDirectory,
+			);
+			const checkedOutCommit = await runGit(
+				["rev-parse", "HEAD"],
+				destinationDirectory,
+			);
+			if (checkedOutCommit.toLowerCase() !== commit) {
+				throw new Error(
+					`Checked out commit '${checkedOutCommit}' instead of '${commit}'.`,
+				);
+			}
+
+			await rm(path.join(destinationDirectory, ".git"), {
+				recursive: true,
+				force: true,
+			});
+		} catch (error) {
+			throw new ConfigurationResolutionError(
+				`Cannot fetch Git repository '${repository}' at commit '${commit}': ${errorMessage(error)}`,
 			);
 		}
-
-		if (verifiedCommit.toLowerCase() !== commit) {
-			throw new Error(
-				`Object '${commit}' resolves to different commit '${verifiedCommit}'.`,
-			);
-		}
-
-		await runGit(["checkout", "--detach", "--quiet", commit], checkoutRoot);
-		const checkedOutCommit = await runGit(["rev-parse", "HEAD"], checkoutRoot);
-		if (checkedOutCommit.toLowerCase() !== commit) {
-			throw new Error(
-				`Checked out commit '${checkedOutCommit}' instead of '${commit}'.`,
-			);
-		}
-	} catch (error) {
-		throw new ConfigurationResolutionError(
-			`Cannot fetch Git repository '${repository}' at commit '${commit}': ${errorMessage(error)}`,
-		);
-	}
-
-	return { root: checkoutRoot, repository, commit };
+	};
 }
 
 /** Resolve a complete configuration graph using the supplied mutable revisions. */
 export async function resolveConfigurationGraph(
 	repositoryRoot: string,
 	resolveMutableRevision: MutableRevisionResolver,
+	options: ResolveConfigurationOptions = {},
 ): Promise<Rule[]> {
 	const canonicalRepositoryRoot =
 		await canonicalizeRepositoryRoot(repositoryRoot);
@@ -210,9 +231,31 @@ export async function resolveConfigurationGraph(
 	const activeSources = new Map<string, string>();
 	const resolvedRules: Rule[] = [];
 	const ruleSources = new Map<string, string>();
-	const temporaryDirectories: string[] = [];
 	const gitRepositories = new Map<string, Promise<RepositoryContext>>();
 	const localContext: RepositoryContext = { root: canonicalRepositoryRoot };
+	const ownsGitSourceStore = options.gitSourceStore === undefined;
+	const gitSourceStore =
+		options.gitSourceStore ?? createTemporaryGitSourceStore();
+
+	async function importGitRepository(
+		repository: string,
+		commit: string,
+	): Promise<RepositoryContext> {
+		const checkout = await gitSourceStore.provideGitCheckout(
+			commit,
+			fetchGitCheckout(repository, commit),
+		);
+		if (checkout.cacheHit) {
+			options.reportProgress?.reportCacheHit(repository, commit);
+		} else {
+			options.reportProgress?.reportFetch(repository, commit);
+		}
+		return {
+			root: await realpath(checkout.contentDirectory),
+			repository,
+			commit,
+		};
+	}
 
 	function getGitRepository(
 		repository: string,
@@ -221,7 +264,7 @@ export async function resolveConfigurationGraph(
 		const key = `${repository}\u0000${commit}`;
 		let context = gitRepositories.get(key);
 		if (context === undefined) {
-			context = fetchGitRepository(repository, commit, temporaryDirectories);
+			context = importGitRepository(repository, commit);
 			gitRepositories.set(key, context);
 		}
 		return context;
@@ -335,16 +378,17 @@ export async function resolveConfigurationGraph(
 
 		return resolvedRules;
 	} finally {
-		await Promise.all(
-			temporaryDirectories.map((directory) =>
-				rm(directory, { recursive: true, force: true }),
-			),
-		);
+		if (ownsGitSourceStore) {
+			await gitSourceStore.dispose();
+		}
 	}
 }
 
 /** Resolve a complete configuration graph and return its ordered rules. */
-export async function loadRules(repositoryRoot: string): Promise<Rule[]> {
+export async function loadRules(
+	repositoryRoot: string,
+	options: ResolveConfigurationOptions = {},
+): Promise<Rule[]> {
 	const canonicalRepositoryRoot =
 		await canonicalizeRepositoryRoot(repositoryRoot);
 	const lockfile = await loadRootLockfile(canonicalRepositoryRoot);
@@ -353,6 +397,7 @@ export async function loadRules(repositoryRoot: string): Promise<Rule[]> {
 		canonicalRepositoryRoot,
 		(repository, revision) =>
 			resolveLockedGitCommit(repository, revision, lockfile, usedLockEntries),
+		options,
 	);
 
 	if (lockfile !== undefined) {

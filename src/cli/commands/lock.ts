@@ -1,4 +1,6 @@
 import path from "node:path";
+import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
+import { createImportProgressReporter } from "../../cache/import-progress.js";
 import {
 	LockfileUpdateError,
 	updateLockfile,
@@ -10,9 +12,24 @@ import { formatValidationError } from "./validate-diagnostic.js";
 export async function runLockCommand({
 	workingDirectory,
 	output,
+	environment,
+	cacheDir,
+	noCache,
 }: CommandContext): Promise<number> {
+	const gitSourceStore = await openRunGitSourceStore({
+		cacheDir,
+		noCache,
+		environment,
+		reportCacheFallback: (message) => output.error(message),
+	});
+	const reportProgress = createImportProgressReporter((line) =>
+		output.error(line),
+	);
 	try {
-		const result = await updateLockfile(workingDirectory);
+		const result = await updateLockfile(workingDirectory, {
+			gitSourceStore,
+			reportProgress,
+		});
 		const branchCount = result.lockfile.sources.filter(
 			({ revision }) => "branch" in revision,
 		).length;
@@ -43,5 +60,7 @@ Next action:
 
 		output.error(await formatValidationError(error, workingDirectory));
 		return 1;
+	} finally {
+		await gitSourceStore.dispose();
 	}
 }

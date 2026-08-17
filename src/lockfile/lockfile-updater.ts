@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stringify } from "yaml";
+import type { ResolveConfigurationOptions } from "../config/configuration-resolver.js";
 import {
 	canonicalizeRepositoryRoot,
 	resolveConfigurationGraph,
@@ -142,6 +143,7 @@ async function writeFileAtomically(
 /** Resolve mutable Git sources and update the root Standards lock file. */
 export async function updateLockfile(
 	repositoryRoot: string,
+	options: ResolveConfigurationOptions = {},
 ): Promise<LockfileUpdateResult> {
 	const canonicalRepositoryRoot =
 		await canonicalizeRepositoryRoot(repositoryRoot);
@@ -156,6 +158,7 @@ export async function updateLockfile(
 				return existing.commit;
 			}
 
+			options.reportProgress?.reportResolvingRevision(repository, revision);
 			const commit = await resolveRemoteRevision(
 				repository,
 				revision,
@@ -164,6 +167,7 @@ export async function updateLockfile(
 			sourceLocks.set(key, { repository, revision, commit });
 			return commit;
 		},
+		options,
 	);
 
 	const lockfile: Lockfile = {
