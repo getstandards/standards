@@ -14,7 +14,7 @@ Canonical words used across Standards code and documentation.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
 - **level** — The requirement level of a rule: `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, or `MAY` (RFC 2119).
-- **lockfile** — The `.standards.lock` document that pins every mutable revision to an exact commit for reproducibility.
+- **lock file** — The `.standards.lock` document that pins every mutable revision to an exact commit for reproducibility.
 - **mutable revision** — A `tag` or `branch` revision, as opposed to an immutable `commit`. Mutable revisions require a lock entry.
 - **rationale** — A rule field that states why the rule exists and which risk it addresses.
 - **references** — A rule field with supporting URLs or repository-relative paths.
@@ -26,5 +26,5 @@ Canonical words used across Standards code and documentation.
 - **rule set** — The collection of rules that a configuration declares, or the flattened ordered list after resolution.
 - **schema** — The normative JSON Schema documents in `schemas/v1/`.
 - **source** — One `extends` entry: a local source (`path`) or a Git source (`repository`, `revision`, `path`).
-- **source lock** — One resolved lockfile entry: `repository`, `revision`, and the resolved `commit`.
+- **source lock** — One resolved lock file entry: `repository`, `revision`, and the resolved `commit`.
 - **version** — The integer discriminator for document syntax. The configuration format and the lock format evolve independently.

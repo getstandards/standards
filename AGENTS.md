@@ -1,15 +1,13 @@
 # Agent Instructions
 
-## Package Manager
+## Core Principles
 
-Use **pnpm**: `pnpm install`, `pnpm build`, `pnpm test`
+- Use the words in `TERMINOLOGY.md`. Do not invent synonyms, overloaded terms, or long compound names when an existing term fits.
+- This is TypeScript/JavaScript, not Java. Prefer functions, plain objects, simple types, and small modules. Avoid class hierarchies, manager/factory names, and interface layers unless they solve a real problem.
+- Optimize for the next maintainer. Choose the smallest design that solves the proven problem, keep complexity local, and avoid speculative abstractions, configuration, extension points, and wrappers.
+- Write docs, specs, and explanations in ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required terms from `TERMINOLOGY.md` and explain them when needed. Remove other jargon.
 
-## Key Conventions
-
-- TypeScript strict mode
-- Zod for runtime validation
-- ESM modules (`"type": "module"`)
-- Vitest for testing
+Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`.
 
 ## TypeScript Exports
 
