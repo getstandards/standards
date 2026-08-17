@@ -2,9 +2,9 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadLockfile } from "../lockfile/loader.js";
-import { runCli } from "./main.js";
-import type { CliOutput } from "./types.js";
+import { loadLockfile } from "../lockfile/lockfile-loader.js";
+import type { CliOutput } from "./cli-context.js";
+import { runCli } from "./cli-runner.js";
 
 const temporaryDirectories: string[] = [];
 

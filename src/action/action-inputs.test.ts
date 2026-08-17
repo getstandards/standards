@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseActionInputs } from "./inputs.js";
+import { parseActionInputs } from "./action-inputs.js";
 
 describe("parseActionInputs", () => {
 	it("parses inputs provided by the composite action", () => {

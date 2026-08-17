@@ -5,16 +5,20 @@ import { stringify } from "yaml";
 import {
 	canonicalizeRepositoryRoot,
 	resolveConfigurationGraph,
-} from "../config/resolver.js";
-import { commitObjectIdSchema } from "../config/schema.js";
+} from "../config/configuration-resolver.js";
+import { commitObjectIdSchema } from "../config/configuration-schema.js";
 import { errorMessage, isMissingFileError } from "../utils/errors.js";
 import { runGit } from "../utils/git.js";
-import type { Lockfile, MutableRevision, SourceLock } from "./schema.js";
+import type {
+	Lockfile,
+	MutableRevision,
+	SourceLock,
+} from "./lockfile-schema.js";
 import {
 	mutableRevisionKey,
 	mutableRevisionParts,
 	sourceLockKey,
-} from "./schema.js";
+} from "./lockfile-schema.js";
 
 const LOCK_FILE_NAME = ".standards.lock";
 

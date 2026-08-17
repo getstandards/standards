@@ -1,6 +1,6 @@
 import { parseAndValidateYamlDocument } from "../utils/yaml.js";
-import type { Configuration } from "./schema.js";
-import { configurationSchema } from "./schema.js";
+import type { Configuration } from "./configuration-schema.js";
+import { configurationSchema } from "./configuration-schema.js";
 
 /** An error found while loading a Standards configuration document. */
 export class ConfigurationLoadError extends Error {

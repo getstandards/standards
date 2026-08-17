@@ -1,15 +1,18 @@
-export { ConfigurationLoadError, loadConfiguration } from "./loader.js";
+export {
+	ConfigurationLoadError,
+	loadConfiguration,
+} from "./configuration-loader.js";
 export {
 	ConfigurationResolutionError,
 	loadLocalRules,
 	loadRules,
-} from "./resolver.js";
+} from "./configuration-resolver.js";
 export type {
 	Configuration,
 	ExtensionSource,
 	GitRevision,
 	Rule,
-} from "./schema.js";
+} from "./configuration-schema.js";
 export {
 	branchRevisionSchema,
 	commitObjectIdSchema,
@@ -20,4 +23,4 @@ export {
 	requirementLevels,
 	ruleSchema,
 	tagRevisionSchema,
-} from "./schema.js";
+} from "./configuration-schema.js";

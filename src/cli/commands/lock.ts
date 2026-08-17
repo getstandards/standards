@@ -1,6 +1,9 @@
 import path from "node:path";
-import { LockfileUpdateError, updateLockfile } from "../../lockfile/updater.js";
-import type { CommandContext } from "../types.js";
+import {
+	LockfileUpdateError,
+	updateLockfile,
+} from "../../lockfile/lockfile-updater.js";
+import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
 /** Resolve mutable sources and update the Standards lock file. */

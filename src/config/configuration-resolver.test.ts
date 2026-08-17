@@ -4,7 +4,10 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { ConfigurationResolutionError, loadRules } from "./resolver.js";
+import {
+	ConfigurationResolutionError,
+	loadRules,
+} from "./configuration-resolver.js";
 
 const RULE = `
   - id: RULE_ID

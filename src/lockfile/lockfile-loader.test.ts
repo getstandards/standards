@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { LockfileLoadError, loadLockfile } from "./loader.js";
+import { LockfileLoadError, loadLockfile } from "./lockfile-loader.js";
 
 describe("loadLockfile", () => {
 	it("parses tag and branch source locks", () => {

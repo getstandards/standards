@@ -1,4 +1,4 @@
-import { runAction } from "./runner.js";
+import { runAction } from "./action-runner.js";
 
 try {
 	await runAction();

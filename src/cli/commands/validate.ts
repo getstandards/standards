@@ -1,8 +1,8 @@
 import { access, realpath } from "node:fs/promises";
 import path from "node:path";
-import { loadRules } from "../../config/resolver.js";
-import { requirementLevels } from "../../config/schema.js";
-import type { CommandContext } from "../types.js";
+import { loadRules } from "../../config/configuration-resolver.js";
+import { requirementLevels } from "../../config/configuration-schema.js";
+import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
 const ENTRY_FILE_NAME = ".standards.yml";

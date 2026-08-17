@@ -4,7 +4,7 @@ import {
 	commitObjectIdSchema,
 	repositoryUrlSchema,
 	tagRevisionSchema,
-} from "../config/schema.js";
+} from "../config/configuration-schema.js";
 
 /** A tag or branch revision recorded in the lock file. */
 export const mutableRevisionSchema = z.union([

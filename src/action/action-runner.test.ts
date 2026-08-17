@@ -5,7 +5,7 @@ import {
 	createPullRequestComment,
 	updateCheckRun,
 	updatePullRequestComment,
-} from "./runner.js";
+} from "./action-runner.js";
 
 describe("GitHub feedback", () => {
 	it("creates and updates a PR comment and check run", async () => {

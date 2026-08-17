@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ConfigurationLoadError, loadConfiguration } from "./loader.js";
+import {
+	ConfigurationLoadError,
+	loadConfiguration,
+} from "./configuration-loader.js";
 
 /** Build a minimal configuration that contains one applicability glob. */
 function createConfigurationWithGlob(glob: string): string {

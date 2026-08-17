@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadRules } from "../config/resolver.js";
-import { loadLockfile } from "./loader.js";
-import { LockfileUpdateError, updateLockfile } from "./updater.js";
+import { loadRules } from "../config/configuration-resolver.js";
+import { loadLockfile } from "./lockfile-loader.js";
+import { LockfileUpdateError, updateLockfile } from "./lockfile-updater.js";
 
 const temporaryDirectories: string[] = [];
 const environmentRestorations: Array<() => void> = [];

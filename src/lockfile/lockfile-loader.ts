@@ -1,6 +1,6 @@
 import { parseAndValidateYamlDocument } from "../utils/yaml.js";
-import type { Lockfile } from "./schema.js";
-import { lockfileSchema } from "./schema.js";
+import type { Lockfile } from "./lockfile-schema.js";
+import { lockfileSchema } from "./lockfile-schema.js";
 
 /** An error found while loading a Standards lock document. */
 export class LockfileLoadError extends Error {

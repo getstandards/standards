@@ -1,17 +1,17 @@
 import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { loadLockfile } from "../lockfile/loader.js";
-import type { Lockfile } from "../lockfile/schema.js";
+import { loadLockfile } from "../lockfile/lockfile-loader.js";
+import type { Lockfile } from "../lockfile/lockfile-schema.js";
 import {
 	mutableRevisionKey,
 	mutableRevisionParts,
 	sourceLockKey,
-} from "../lockfile/schema.js";
+} from "../lockfile/lockfile-schema.js";
 import { errorMessage, isMissingFileError } from "../utils/errors.js";
 import { runGit } from "../utils/git.js";
-import { loadConfiguration } from "./loader.js";
-import type { GitRevision, Rule } from "./schema.js";
+import { loadConfiguration } from "./configuration-loader.js";
+import type { GitRevision, Rule } from "./configuration-schema.js";
 
 const ENTRY_FILE_NAME = ".standards.yml";
 const LOCK_FILE_NAME = ".standards.lock";

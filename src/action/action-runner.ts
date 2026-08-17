@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
-import type { ActionInputs } from "./inputs.js";
-import { parseActionInputs } from "./inputs.js";
+import type { ActionInputs } from "./action-inputs.js";
+import { parseActionInputs } from "./action-inputs.js";
 
 /** A repository targeted by the action. */
 export interface RepositoryTarget {

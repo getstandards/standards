@@ -1,8 +1,8 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { ConfigurationLoadError } from "../../config/loader.js";
-import { ConfigurationResolutionError } from "../../config/resolver.js";
-import { LockfileLoadError } from "../../lockfile/loader.js";
+import { ConfigurationLoadError } from "../../config/configuration-loader.js";
+import { ConfigurationResolutionError } from "../../config/configuration-resolver.js";
+import { LockfileLoadError } from "../../lockfile/lockfile-loader.js";
 import { errorMessage } from "../../utils/errors.js";
 
 interface DiagnosticDetails {

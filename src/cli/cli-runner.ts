@@ -1,10 +1,10 @@
-import { CliArgumentError, parseCliArgs } from "./args.js";
+import { CliArgumentError, parseCliArgs } from "./cli-args.js";
+import type { CliOutput } from "./cli-context.js";
+import { renderHelp } from "./cli-help.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
 import { runReviewCommand } from "./commands/review.js";
 import { runValidateCommand } from "./commands/validate.js";
-import { renderHelp } from "./help.js";
-import type { CliOutput } from "./types.js";
 
 /** Run the Standards CLI and return its process exit status. */
 export async function runCli(
