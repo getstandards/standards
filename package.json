@@ -53,7 +53,7 @@
 		"type": "git",
 		"url": "git+https://github.com/nlecoy/standards.git"
 	},
-	"license": "AGPL-3.0-only",
+	"license": "MIT",
 	"bugs": {
 		"url": "https://github.com/nlecoy/standards/issues"
 	},
