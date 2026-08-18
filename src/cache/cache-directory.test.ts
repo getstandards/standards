@@ -27,6 +27,46 @@ describe("resolveCacheDirectory", () => {
 		expect(resolved.directory).toBe(path.resolve("/env/cache"));
 	});
 
+	it("uses the settings directory below the environment variable", () => {
+		const fromEnvironment = resolveCacheDirectory({
+			settingsCacheDir: "/settings/cache",
+			environment: { STANDARDS_CACHE_DIR: "/env/cache" },
+			platform: "linux",
+			homeDirectory: "/home/user",
+		});
+		const fromSettings = resolveCacheDirectory({
+			settingsCacheDir: "/settings/cache",
+			environment: {},
+			platform: "linux",
+			homeDirectory: "/home/user",
+		});
+
+		expect(fromEnvironment.directory).toBe(path.resolve("/env/cache"));
+		expect(fromSettings.directory).toBe(path.resolve("/settings/cache"));
+	});
+
+	it("expands a home-relative settings cache directory", () => {
+		const resolved = resolveCacheDirectory({
+			settingsCacheDir: "~/.config/standards/cache",
+			environment: {},
+			platform: "linux",
+			homeDirectory: "/home/user",
+		});
+
+		expect(resolved.directory).toBe("/home/user/.config/standards/cache");
+	});
+
+	it("does not expand another user's home directory", () => {
+		const resolved = resolveCacheDirectory({
+			settingsCacheDir: "~other/cache",
+			environment: {},
+			platform: "linux",
+			homeDirectory: "/home/user",
+		});
+
+		expect(resolved.directory).toBe(path.resolve("~other/cache"));
+	});
+
 	it("falls back to the XDG cache directory on Linux", () => {
 		const resolved = resolveCacheDirectory({
 			environment: { XDG_CACHE_HOME: "/home/user/.cache" },
@@ -72,7 +112,20 @@ describe("resolveCacheDirectory", () => {
 		});
 
 		expect(resolved.directory).toBe(
-			path.resolve("C:\\Users\\user\\AppData\\Local", "standards", "cache"),
+			"C:\\Users\\user\\AppData\\Local\\standards\\cache",
+		);
+	});
+
+	it("expands a Windows home-relative settings cache directory", () => {
+		const resolved = resolveCacheDirectory({
+			settingsCacheDir: "~\\.config\\standards\\cache",
+			environment: {},
+			platform: "win32",
+			homeDirectory: "C:\\Users\\user",
+		});
+
+		expect(resolved.directory).toBe(
+			"C:\\Users\\user\\.config\\standards\\cache",
 		);
 	});
 

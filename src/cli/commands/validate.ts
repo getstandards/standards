@@ -26,10 +26,12 @@ export async function runValidateCommand({
 	output,
 	environment,
 	cacheDir,
+	settings,
 	noCache,
 }: CommandContext): Promise<number> {
 	const gitSourceStore = await openRunGitSourceStore({
 		cacheDir,
+		settingsCacheDir: settings?.cache_dir,
 		noCache,
 		environment,
 		reportCacheFallback: (message) => output.error(message),

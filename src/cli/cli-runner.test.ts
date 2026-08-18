@@ -1,14 +1,37 @@
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadLockfile } from "../lockfile/lockfile-loader.js";
 import type { CliOutput } from "./cli-context.js";
 import { runCli } from "./cli-runner.js";
 
 const temporaryDirectories: string[] = [];
+let previousXdgConfigHome: string | undefined;
+let previousXdgCacheHome: string | undefined;
+
+beforeEach(async () => {
+	const runtimeDirectory = await mkdtemp(
+		path.join(os.tmpdir(), "standards-cli-runtime-test-"),
+	);
+	temporaryDirectories.push(runtimeDirectory);
+	previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+	previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+	process.env.XDG_CONFIG_HOME = path.join(runtimeDirectory, "config");
+	process.env.XDG_CACHE_HOME = path.join(runtimeDirectory, "cache");
+});
 
 afterEach(async () => {
+	if (previousXdgConfigHome === undefined) {
+		delete process.env.XDG_CONFIG_HOME;
+	} else {
+		process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+	}
+	if (previousXdgCacheHome === undefined) {
+		delete process.env.XDG_CACHE_HOME;
+	} else {
+		process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+	}
 	await Promise.all(
 		temporaryDirectories
 			.splice(0)

@@ -128,6 +128,7 @@ export async function runCacheCommand(
 
 	const { directory } = resolveCacheDirectory({
 		cacheDir: context.cacheDir,
+		settingsCacheDir: context.settings?.cache_dir,
 		environment: context.environment,
 	});
 

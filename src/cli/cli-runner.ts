@@ -1,3 +1,10 @@
+import { formatStandardsSettingsDiagnostic } from "../settings/settings-diagnostic.js";
+import { resolveStandardsSettingsPath } from "../settings/settings-file-location.js";
+import {
+	readStandardsSettingsFile,
+	StandardsSettingsLoadError,
+} from "../settings/settings-loader.js";
+import type { StandardsSettings } from "../settings/settings-schema.js";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
 import { renderHelp } from "./cli-help.js";
@@ -30,11 +37,35 @@ export async function runCli(
 		return 0;
 	}
 
+	// A broken settings file fails every command that can use a settings
+	// value, even when an option or environment variable overrides the value
+	// it holds. One rule keeps runs predictable (specs/settings.md).
+	const commandReadsSettings =
+		command === "validate" ||
+		command === "lock" ||
+		(command === "cache" && cacheSubcommand !== undefined);
+
+	let settings: StandardsSettings | undefined;
+	if (commandReadsSettings) {
+		try {
+			settings = await readStandardsSettingsFile(
+				resolveStandardsSettingsPath({ environment }),
+			);
+		} catch (error) {
+			if (!(error instanceof StandardsSettingsLoadError)) {
+				throw error;
+			}
+			output.error(formatStandardsSettingsDiagnostic(error));
+			return 1;
+		}
+	}
+
 	const context: CommandContext = {
 		workingDirectory,
 		output,
 		environment,
 		cacheDir,
+		settings,
 		noCache,
 	};
 

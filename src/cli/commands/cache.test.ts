@@ -18,6 +18,13 @@ async function createTemporaryDirectory(): Promise<string> {
 	return directory;
 }
 
+/** Build a `runCli` environment whose settings location is an empty directory. */
+async function isolatedEnvironment(
+	overrides: NodeJS.ProcessEnv,
+): Promise<NodeJS.ProcessEnv> {
+	return { XDG_CONFIG_HOME: await createTemporaryDirectory(), ...overrides };
+}
+
 /** Run a Git command in a repository. */
 function runGit(repositoryRoot: string, arguments_: string[]): string {
 	return execFileSync("git", arguments_, {
@@ -150,14 +157,65 @@ afterEach(async () => {
 });
 
 describe("standards cache", () => {
+	it("uses cache_dir from the per-user settings file", async () => {
+		const configHome = await createTemporaryDirectory();
+		const settingsDirectory = path.join(configHome, "standards");
+		const homeDirectory = await createTemporaryDirectory();
+		const cacheDirectory = path.join(
+			homeDirectory,
+			".config",
+			"standards",
+			"cache",
+		);
+		await mkdir(settingsDirectory, { recursive: true });
+		await mkdir(path.join(cacheDirectory, "git-v1"), { recursive: true });
+		await writeFile(
+			path.join(settingsDirectory, "settings.yml"),
+			"version: 1\ncache_dir: ~/.config/standards/cache\n",
+		);
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache", "clean"], "/unused", output, {
+			XDG_CONFIG_HOME: configHome,
+			HOME: homeDirectory,
+		});
+
+		expect(exitStatus).toBe(0);
+		expect(stdout).toEqual([`Removed source cache at ${cacheDirectory}`]);
+		expect(stderr).toEqual([]);
+		expect(await pathExists(cacheDirectory)).toBe(false);
+	});
+
+	it("reports an invalid settings field", async () => {
+		const configHome = await createTemporaryDirectory();
+		const settingsDirectory = path.join(configHome, "standards");
+		await mkdir(settingsDirectory, { recursive: true });
+		const settingsPath = path.join(settingsDirectory, "settings.yml");
+		await writeFile(settingsPath, "version: 1\ncache_dir: 42\n");
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache", "clean"], "/unused", output, {
+			XDG_CONFIG_HOME: configHome,
+		});
+
+		expect(exitStatus).toBe(1);
+		expect(stdout).toEqual([]);
+		expect(stderr[0]).toContain(`Source:   ${settingsPath}`);
+		expect(stderr[0]).toContain("Field:    cache_dir");
+		expect(stderr[0]).toContain("expected string");
+	});
+
 	it("removes the cache directory on clean", async () => {
 		const cacheDirectory = await createTemporaryDirectory();
 		await mkdir(path.join(cacheDirectory, "git-v1"), { recursive: true });
 		const { output, stdout, stderr } = captureOutput();
 
-		const exitStatus = await runCli(["cache", "clean"], "/unused", output, {
-			STANDARDS_CACHE_DIR: cacheDirectory,
-		});
+		const exitStatus = await runCli(
+			["cache", "clean"],
+			"/unused",
+			output,
+			await isolatedEnvironment({ STANDARDS_CACHE_DIR: cacheDirectory }),
+		);
 
 		expect(exitStatus).toBe(0);
 		expect(stdout[0]).toBe(`Removed source cache at ${cacheDirectory}`);
@@ -172,9 +230,12 @@ describe("standards cache", () => {
 		);
 		const { output, stdout } = captureOutput();
 
-		const exitStatus = await runCli(["cache", "clean"], "/unused", output, {
-			STANDARDS_CACHE_DIR: cacheDirectory,
-		});
+		const exitStatus = await runCli(
+			["cache", "clean"],
+			"/unused",
+			output,
+			await isolatedEnvironment({ STANDARDS_CACHE_DIR: cacheDirectory }),
+		);
 
 		expect(exitStatus).toBe(0);
 		expect(stdout[0]).toBe(
@@ -199,9 +260,12 @@ describe("standards cache", () => {
 		await writeFile(`${path.join(bucketDirectory, unreferencedCommit)}.ok`, "");
 
 		const { output, stdout } = captureOutput();
-		const exitStatus = await runCli(["cache", "prune"], consumerRoot, output, {
-			STANDARDS_CACHE_DIR: cacheDirectory,
-		});
+		const exitStatus = await runCli(
+			["cache", "prune"],
+			consumerRoot,
+			output,
+			await isolatedEnvironment({ STANDARDS_CACHE_DIR: cacheDirectory }),
+		);
 
 		expect(exitStatus).toBe(0);
 		expect(stdout[0]).toBe("Removed 1 source cache entry.");
@@ -224,12 +288,16 @@ describe("standards cache", () => {
 		const cacheDirectory = await createTemporaryDirectory();
 		const shortCommit = gitSource.commit.slice(0, 12);
 
+		const environment = await isolatedEnvironment({
+			STANDARDS_CACHE_DIR: cacheDirectory,
+		});
+
 		const firstRun = captureOutput();
 		const firstStatus = await runCli(
 			["validate"],
 			consumerRoot,
 			firstRun.output,
-			{ STANDARDS_CACHE_DIR: cacheDirectory },
+			environment,
 		);
 
 		expect(firstStatus).toBe(0);
@@ -242,7 +310,7 @@ describe("standards cache", () => {
 			["validate"],
 			consumerRoot,
 			secondRun.output,
-			{ STANDARDS_CACHE_DIR: cacheDirectory },
+			environment,
 		);
 
 		expect(secondStatus).toBe(0);

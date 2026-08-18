@@ -1,9 +1,13 @@
-import os from "node:os";
 import path from "node:path";
+import {
+	nonEmptyEnvironmentValue,
+	resolveHomeDirectory,
+} from "../utils/environment.js";
 
 /** Inputs that select the Standards source cache directory. */
 export interface CacheDirectoryOptions {
 	cacheDir?: string;
+	settingsCacheDir?: string;
 	noCache?: boolean;
 	environment?: NodeJS.ProcessEnv;
 	platform?: NodeJS.Platform;
@@ -28,44 +32,70 @@ function platformDefaultCacheDirectory(
 ): string {
 	if (platform === "win32") {
 		const localAppData =
-			environment.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
-		return path.join(localAppData, "standards", "cache");
+			nonEmptyEnvironmentValue(environment.LOCALAPPDATA) ??
+			path.win32.join(homeDirectory, "AppData", "Local");
+		return path.win32.join(localAppData, "standards", "cache");
 	}
 
-	const xdgCacheHome = environment.XDG_CACHE_HOME;
-	if (xdgCacheHome !== undefined && xdgCacheHome !== "") {
+	const xdgCacheHome = nonEmptyEnvironmentValue(environment.XDG_CACHE_HOME);
+	if (xdgCacheHome !== undefined) {
 		return path.join(xdgCacheHome, "standards");
 	}
 	return path.join(homeDirectory, ".cache", "standards");
+}
+
+/** Expand a leading home-directory marker in a source cache directory. */
+function expandHomeCacheDirectory(
+	directory: string,
+	platform: NodeJS.Platform,
+	homeDirectory: string,
+): string {
+	if (directory === "~") {
+		return homeDirectory;
+	}
+
+	const hasHomePrefix =
+		directory.startsWith("~/") ||
+		(platform === "win32" && directory.startsWith("~\\"));
+	if (!hasHomePrefix) {
+		return directory;
+	}
+
+	const platformPath = platform === "win32" ? path.win32 : path;
+	return platformPath.join(homeDirectory, directory.slice(2));
 }
 
 /**
  * Resolve the persistent source cache directory and the disabled flag.
  *
  * The `--cache-dir` option wins over `STANDARDS_CACHE_DIR`, which wins over the
- * platform default. The cache is disabled by `--no-cache` or by a non-empty
- * `STANDARDS_NO_CACHE` value. The directory is always returned so that the
- * `cache clean` and `cache prune` commands can locate it even when a run
- * disables reads and writes.
+ * settings file and then the platform default. The cache is disabled by
+ * `--no-cache` or by a non-empty `STANDARDS_NO_CACHE` value. The directory is
+ * always returned so that cache commands can locate it.
  */
 export function resolveCacheDirectory(
 	options: CacheDirectoryOptions,
 ): ResolvedCacheDirectory {
 	const environment = options.environment ?? process.env;
 	const platform = options.platform ?? process.platform;
-	const homeDirectory = options.homeDirectory ?? os.homedir();
+	const homeDirectory =
+		options.homeDirectory ?? resolveHomeDirectory(environment, platform);
 
 	const directory =
 		options.cacheDir ??
-		(environment.STANDARDS_CACHE_DIR !== undefined &&
-		environment.STANDARDS_CACHE_DIR !== ""
-			? environment.STANDARDS_CACHE_DIR
-			: platformDefaultCacheDirectory(environment, platform, homeDirectory));
+		nonEmptyEnvironmentValue(environment.STANDARDS_CACHE_DIR) ??
+		options.settingsCacheDir ??
+		platformDefaultCacheDirectory(environment, platform, homeDirectory);
 
 	const disabled =
 		options.noCache === true ||
-		(environment.STANDARDS_NO_CACHE !== undefined &&
-			environment.STANDARDS_NO_CACHE !== "");
+		nonEmptyEnvironmentValue(environment.STANDARDS_NO_CACHE) !== undefined;
 
-	return { directory: path.resolve(directory), disabled };
+	const platformPath = platform === "win32" ? path.win32 : path;
+	return {
+		directory: platformPath.resolve(
+			expandHomeCacheDirectory(directory, platform, homeDirectory),
+		),
+		disabled,
+	};
 }
