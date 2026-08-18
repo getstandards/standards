@@ -67,3 +67,20 @@ export const modelReferenceSchema = z
 
 /** A validated model reference used by one or both review agent steps. */
 export type ModelReference = z.infer<typeof modelReferenceSchema>;
+
+/** The provider name and model identifier split from a model reference. */
+export interface ModelReferenceParts {
+	provider: string;
+	model: string;
+}
+
+/** Split a validated model reference into its provider name and model identifier. */
+export function parseModelReference(
+	modelReference: ModelReference,
+): ModelReferenceParts {
+	const separatorIndex = modelReference.indexOf("/");
+	return {
+		provider: modelReference.slice(0, separatorIndex),
+		model: modelReference.slice(separatorIndex + 1),
+	};
+}
