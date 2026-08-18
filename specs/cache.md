@@ -68,7 +68,9 @@ The implementation MUST resolve the cache directory in this priority order:
    disabled. See [Disabling the cache](#disabling-the-cache).
 2. The value of a `--cache-dir` option.
 3. The value of the `STANDARDS_CACHE_DIR` environment variable.
-4. A platform default cache directory:
+4. The `cache_dir` field of the settings file, defined in
+   [Standards settings](./settings.md).
+5. A platform default cache directory:
    - `$XDG_CACHE_HOME/standards`, or `$HOME/.cache/standards` when
      `XDG_CACHE_HOME` is unset, on macOS, Linux, and other Unix systems.
    - `%LOCALAPPDATA%\standards\cache` on Windows.

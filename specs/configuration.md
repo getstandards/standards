@@ -5,13 +5,13 @@ Defines Standards configuration format.
 ## Purpose
 
 A Standards configuration defines the engineering rules that an agent can
-evaluate during pull request review. A repository can define rules directly,
+evaluate during review of a change. A repository can define rules directly,
 extend one or more local files, extend files from other Git repositories, or
 combine these options.
 
 This document specifies version 1 of the configuration format. It does not
 specify how the review agent selects rules, evaluates a change, or reports a
-result.
+result. [Standards review](./review.md) specifies these.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` in this
 document are to be interpreted as described by RFC 2119. The same words are
@@ -209,7 +209,7 @@ The operation SHOULD produce stable output by sorting entries first by
 During normal validation or review, an implementation MUST load the commit from
 the lock file. It MUST NOT resolve the tag or branch again or silently update
 the lock file. This behavior prevents a moved tag or branch from changing the
-rules for an unchanged pull request. A user adopts changes to a mutable revision
+rule set between two reviews of the same change. A user adopts changes to a mutable revision
 through an explicit lock update, and the resulting commit change is visible in
 the repository diff.
 
