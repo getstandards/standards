@@ -28,6 +28,14 @@ const COMMANDS: CommandHelp[] = [
 		name: "cache prune",
 		description: "Remove source cache entries the configuration does not use",
 	},
+	{
+		name: "login <provider>",
+		description: "Store a model provider credential",
+	},
+	{
+		name: "logout <provider>",
+		description: "Remove a stored model provider credential",
+	},
 ];
 
 interface OptionHelp {

@@ -3,12 +3,6 @@
 	"version": "0.0.1",
 	"description": "Standards turns your engineering rules into code an agent can enforce on every pull request",
 	"type": "module",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": "./dist/index.js",
-		"./config": "./dist/config/index.js",
-		"./lockfile": "./dist/lockfile/index.js"
-	},
 	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
 	"bin": {
 		"standards": "./dist/cli/index.js"
@@ -38,6 +32,7 @@
 		"compliance"
 	],
 	"dependencies": {
+		"@earendil-works/pi-ai": "^0.84.2",
 		"@octokit/rest": "^22.0.1",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"

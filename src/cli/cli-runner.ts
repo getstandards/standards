@@ -11,6 +11,8 @@ import { renderHelp } from "./cli-help.js";
 import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
+import { runLoginCommand } from "./commands/login.js";
+import { runLogoutCommand } from "./commands/logout.js";
 import { runReviewCommand } from "./commands/review.js";
 import { runValidateCommand } from "./commands/validate.js";
 
@@ -31,7 +33,8 @@ export async function runCli(
 		return 1;
 	}
 
-	const { command, cacheSubcommand, cacheDir, noCache, help } = parsedArguments;
+	const { command, cacheSubcommand, provider, cacheDir, noCache, help } =
+		parsedArguments;
 	if (command === undefined || help) {
 		output.log(renderHelp());
 		return 0;
@@ -80,5 +83,9 @@ export async function runCli(
 			return runReviewCommand();
 		case "cache":
 			return runCacheCommand(context, cacheSubcommand);
+		case "login":
+			return runLoginCommand(context, provider);
+		case "logout":
+			return runLogoutCommand(context, provider);
 	}
 }

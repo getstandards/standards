@@ -8,6 +8,8 @@ export const cliCommandSchema = z.enum([
 	"lock",
 	"review",
 	"cache",
+	"login",
+	"logout",
 ]);
 
 export type CliCommand = z.infer<typeof cliCommandSchema>;
@@ -19,10 +21,14 @@ export type CacheSubcommand = z.infer<typeof cacheSubcommandSchema>;
 /** Commands that read from or write to the persistent source cache. */
 const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "lock", "review"];
 
+/** Commands that take one optional model provider argument. */
+const PROVIDER_COMMANDS: CliCommand[] = ["login", "logout"];
+
 /** Validated Standards CLI arguments. */
 export interface ParsedCliArgs {
 	command?: CliCommand;
 	cacheSubcommand?: CacheSubcommand;
+	provider?: string;
 	cacheDir?: string;
 	noCache: boolean;
 	help: boolean;
@@ -81,6 +87,15 @@ export function parseCliArgs(
 		return parseCacheCommand(commandArguments, cacheDir, noCache);
 	}
 
+	if (PROVIDER_COMMANDS.includes(parsedCommand)) {
+		return parseProviderCommand(
+			parsedCommand,
+			commandArguments,
+			cacheDir,
+			noCache,
+		);
+	}
+
 	if (commandArguments.length > 0) {
 		throw new CliArgumentError(
 			`Command '${parsedCommand}' does not accept arguments or options.`,
@@ -101,6 +116,40 @@ export function parseCliArgs(
 	}
 
 	return { command: parsedCommand, cacheDir, noCache, help: false };
+}
+
+/** Parse the arguments and options of the `login` and `logout` commands. */
+function parseProviderCommand(
+	command: CliCommand,
+	commandArguments: string[],
+	cacheDir: string | undefined,
+	noCache: boolean,
+): ParsedCliArgs {
+	if (cacheDir !== undefined) {
+		throw new CliArgumentError(
+			`Command '${command}' does not accept the '--cache-dir' option.`,
+		);
+	}
+	if (noCache) {
+		throw new CliArgumentError(
+			`Command '${command}' does not accept the '--no-cache' option.`,
+		);
+	}
+
+	const [provider, ...rest] = commandArguments;
+	if (rest.length > 0) {
+		throw new CliArgumentError(
+			`Command '${command}' accepts at most one provider argument.`,
+		);
+	}
+
+	return {
+		command,
+		provider,
+		cacheDir: undefined,
+		noCache: false,
+		help: false,
+	};
 }
 
 /** Parse the arguments and options of the `cache` command. */

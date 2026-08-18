@@ -279,9 +279,12 @@ problem and a relevant next action to standard error. It MUST exit with status
 ## `login`
 
 `standards login <provider>` stores a credential for one model provider, as
-specified in [Standards provider credentials](./credentials.md). For a provider with
-subscription support, it runs the provider's OAuth flow. For every other
-provider, it prompts for an API key without echoing it.
+specified in [Standards provider credentials](./credentials.md). For a
+provider with subscription support, it runs the provider's OAuth flow. For
+other providers, it runs the interactive authentication method that the
+provider SDK defines. This method can request an API key or provider values
+such as a project, location, or profile. A secret prompt does not echo its
+value.
 
 On success, the command MUST report the provider and the credential kind and
 exit with status `0`. It MUST NOT print the stored secret.
@@ -298,4 +301,3 @@ provider, it MUST report that state. Both cases exit with status `0`.
 
 A `login` or `logout` command MUST NOT modify the configuration, the lock
 file, or any other repository file.
-
