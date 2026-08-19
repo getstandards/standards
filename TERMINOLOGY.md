@@ -28,4 +28,5 @@ Canonical words used across Standards code and documentation.
 - **schema** — The normative JSON Schema documents in `schemas/v1/`.
 - **source** — One `extends` entry: a local source (`path`) or a Git source (`repository`, `revision`, `path`).
 - **source lock** — One resolved lock file entry: `repository`, `revision`, and the resolved `commit`.
+- **target** — A repository-relative path, file or directory, passed to `standards review` to limit the review to the changed files it matches.
 - **version** — The integer discriminator for document syntax. The configuration format and the lock format evolve independently.

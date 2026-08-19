@@ -375,9 +375,20 @@ the validation rules. Duplicate mapping keys MUST cause validation to fail.
 Version 1 has two JSON Schema Draft 2020-12 schemas:
 
 - [`standards.schema.json`](../schemas/v1/standards.schema.json) validates
-  `.standards.yml` files and extended configuration files.
+  `.standards.yml` files and extended configuration files. Its canonical `$id`
+  is `https://getstandards.dev/schemas/v1/standards.schema.json`.
 - [`standards-lock.schema.json`](../schemas/v1/standards-lock.schema.json)
-  validates `.standards.lock` files.
+  validates `.standards.lock` files. Its canonical `$id` is
+  `https://getstandards.dev/schemas/v1/standards-lock.schema.json`.
+
+The schemas ship with the package. `standards schema` prints the configuration
+schema and `standards schema lock` prints the lock-file schema, so an editor or
+external tool can read them without the canonical URL. To attach the schema to
+`.standards.yml` in an editor, add a first line with the canonical URL:
+
+```yaml
+# yaml-language-server: $schema=https://getstandards.dev/schemas/v1/standards.schema.json
+```
 
 These schemas are normative for document structure and scalar value formats.
 An implementation MUST also enforce the semantic validation and resolution

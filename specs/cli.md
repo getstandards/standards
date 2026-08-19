@@ -20,14 +20,15 @@ The executable name is `standards`. It provides these commands:
 | `standards validate` | Validate the configuration and resolve its complete rule set. | Implemented. |
 | `standards lock` | Resolve mutable Git sources and update the lock file. | Implemented. `--check` is planned. |
 | `standards rules` | List the resolved rule set with each rule's origin. | Planned. |
-| `standards review` | Review changes against the resolved rule set. | Planned. Currently no operation. The pipeline is specified in [Standards review](./review.md). |
+| `standards review` | Review changes against the resolved rule set. | Implemented. The pipeline is specified in [Standards review](./review.md). |
 | `standards test` | Run rule tests against the resolved rule set. | Planned. Specified in [Standards rule tests](./testing.md). |
 | `standards cache` | Manage the source cache. Groups the `clean` and `prune` subcommands. | Planned. |
+| `standards schema [config\|lock]` | Print a bundled JSON Schema to standard output. | Implemented. |
 | `standards login <provider>` | Store a credential for a model provider. | Planned. |
 | `standards logout <provider>` | Remove the stored credential for a model provider. | Planned. |
 
-`init` and `review` reserve their command names: until they are implemented,
-they MUST exit with status `0` without output or other effects.
+`init` reserves its command name: until it is implemented, it MUST exit with
+status `0` without output or other effects.
 
 ## General behavior
 
@@ -41,10 +42,10 @@ An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
 
 A command accepts only the positional arguments and options listed for it in
-this specification. No command other than `login`, `logout`, and `review`
-accepts a positional argument. Supplying an argument or option that a command does not
-accept MUST print a diagnostic to standard error and exit with the command's
-error status defined below.
+this specification. No command other than `cache`, `schema`, `login`,
+`logout`, and `review` accepts a positional argument. Supplying an argument or
+option that a command does not accept MUST print a diagnostic to standard error
+and exit with the command's error status defined below.
 
 ### Exit statuses
 
@@ -226,6 +227,10 @@ configuration, the lock file, or any other repository file.
 [Standards review](./review.md) for the repository in the current working
 directory.
 
+Running `standards review --help` or `standards review -h` MUST print the
+review help text, which lists the review options and the current default
+models, to standard output and exit with status `0`.
+
 The head revision is the checkout's `HEAD`. The base revision resolves in
 this priority order:
 
@@ -315,6 +320,20 @@ other repository file.
 If cache resolution, traversal, or removal fails, the command MUST print the
 problem and a relevant next action to standard error. It MUST exit with status
 `1`.
+
+## `schema`
+
+`standards schema` prints a bundled JSON Schema to standard output. It takes one
+optional positional argument that selects the target: `config` (default) prints
+the schema for `.standards.yml` and extended configuration files, and `lock`
+prints the schema for `.standards.lock`. The schemas are described in
+[Standards configuration format](./configuration.md).
+
+The command MUST write the selected schema to standard output and exit with
+status `0`. An unknown target MUST print a diagnostic to standard error and
+exit with status `1`. The command MUST NOT read the configuration, the lock
+file, the source cache, or the settings file, so it MUST NOT accept the
+`--cache-dir` or `--no-cache` option.
 
 ## `login`
 

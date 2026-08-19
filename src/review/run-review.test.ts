@@ -114,6 +114,75 @@ describe("runReview", () => {
 		expect(report.models.evaluation).toBe("anthropic/claude-sonnet-5");
 	});
 
+	it("limits the review to the changed files a target matches", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		await writeFile(path.join(directory, "cart.ts"), "const cart = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(
+			path.join(directory, "invoice.ts"),
+			"const total = subtotal * 1.2;\n",
+		);
+		await writeFile(
+			path.join(directory, "cart.ts"),
+			"const cart = price * 1.2;\n",
+		);
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		const respond: FauxResponseFactory = (context) => {
+			if ((context.systemPrompt ?? "").includes("report_findings")) {
+				return fauxAssistantMessage([
+					fauxToolCall("report_findings", { findings: [] }),
+				]);
+			}
+			return fauxAssistantMessage([
+				fauxToolCall("report_verdict", { confirmed: true }),
+			]);
+		};
+		faux.setResponses([respond]);
+		const progressLines: string[] = [];
+
+		const report = await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			targets: ["invoice.ts"],
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+			reportProgress: (line) => progressLines.push(line),
+		});
+
+		expect(report.counts.evaluation_tasks).toBe(1);
+		expect(report.usage.evaluation.invocations).toBe(1);
+		expect(progressLines).toEqual([
+			"Evaluating 1 selected file in 1 evaluation task.",
+		]);
+	});
+
+	it("rejects a target that does not exist in the head revision", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 2;\n");
+		const head = await commitAll(directory, "head");
+
+		const { models } = anthropicFaux();
+
+		await expect(
+			runReview({
+				baseRevision: base,
+				headRevision: head,
+				workingDirectory: directory,
+				targets: ["missing.ts"],
+				ruleSet: [moneyRule],
+				models,
+				environment: {},
+			}),
+		).rejects.toThrow("Target 'missing.ts' does not exist");
+	});
+
 	it("ends compliant with zero invocations when no rule is selected", async () => {
 		const directory = await initRepository();
 		await writeFile(path.join(directory, "notes.md"), "# notes\n");

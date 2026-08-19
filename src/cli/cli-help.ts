@@ -1,3 +1,5 @@
+import { DEFAULT_PROVIDER_MODELS } from "../review/model-selection.js";
+
 interface CommandHelp {
 	name: string;
 	description: string;
@@ -18,11 +20,15 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "review",
-		description: "Review changes against the resolved rules (not implemented)",
+		description: "Review changes against the resolved rules",
 	},
 	{
 		name: "cache",
 		description: "Manage the source cache (clean, prune)",
+	},
+	{
+		name: "schema [config|lock]",
+		description: "Print a JSON Schema for the configuration or lock file",
 	},
 	{
 		name: "login <provider>",
@@ -62,6 +68,42 @@ const OPTIONS: OptionHelp[] = [
 	},
 ];
 
+const REVIEW_OPTIONS: OptionHelp[] = [
+	{ name: "-h, --help", description: "Show this help" },
+	{
+		name: "--base <revision>",
+		description: "Review the change since <revision>",
+	},
+	{
+		name: "--all",
+		description: "Review every tracked file of the head revision",
+	},
+	{
+		name: "--format <format>",
+		description: "Output format: text (default) or json",
+	},
+	{
+		name: "--model <provider>/<model>",
+		description: "Run both agent steps on this model",
+	},
+	{
+		name: "--evaluation-model <provider>/<model>",
+		description: "Run the evaluation step on this model",
+	},
+	{
+		name: "--verification-model <provider>/<model>",
+		description: "Run the verification step on this model",
+	},
+	{
+		name: "--cache-dir <path>",
+		description: "Use <path> as the source cache directory",
+	},
+	{
+		name: "--no-cache",
+		description: "Do not read from or write to the source cache",
+	},
+];
+
 const CACHE_OPTIONS: OptionHelp[] = [
 	{ name: "-h, --help", description: "Show this help" },
 	{
@@ -88,6 +130,25 @@ export function renderHelp(): string {
 		"",
 		"Options:",
 		...formatHelpEntries(OPTIONS),
+	].join("\n");
+}
+
+/** Render the help text for the `standards review` command. */
+export function renderReviewHelp(): string {
+	const defaultModels = Object.entries(DEFAULT_PROVIDER_MODELS).map(
+		([provider, model]) => ({ name: provider, description: model }),
+	);
+	return [
+		"Usage: standards review [options] [target...]",
+		"",
+		"Review the change between a base revision and HEAD against the resolved",
+		"rules. A target limits the review to a file or a directory.",
+		"",
+		"Options:",
+		...formatHelpEntries(REVIEW_OPTIONS),
+		"",
+		"Default models:",
+		...formatHelpEntries(defaultModels),
 	].join("\n");
 }
 

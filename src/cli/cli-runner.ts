@@ -7,13 +7,14 @@ import {
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
-import { renderCacheHelp, renderHelp } from "./cli-help.js";
+import { renderCacheHelp, renderHelp, renderReviewHelp } from "./cli-help.js";
 import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
 import { runLoginCommand } from "./commands/login.js";
 import { runLogoutCommand } from "./commands/logout.js";
 import { runReviewCommand } from "./commands/review.js";
+import { runSchemaCommand } from "./commands/schema.js";
 import { runValidateCommand } from "./commands/validate.js";
 
 /** Run the Standards CLI and return its process exit status. */
@@ -30,17 +31,25 @@ export async function runCli(
 		const message =
 			error instanceof CliArgumentError ? error.message : String(error);
 		output.error(`${message}\n\n${renderHelp()}`);
-		return 1;
+		return error instanceof CliArgumentError ? error.exitStatus : 1;
 	}
 
-	const { command, cacheSubcommand, provider, cacheDir, noCache, help } =
-		parsedArguments;
+	const {
+		command,
+		cacheSubcommand,
+		schemaTarget,
+		provider,
+		review,
+		cacheDir,
+		noCache,
+		help,
+	} = parsedArguments;
 	if (command === undefined) {
 		output.log(renderHelp());
 		return 0;
 	}
 	if (help) {
-		output.log(renderCacheHelp());
+		output.log(command === "review" ? renderReviewHelp() : renderCacheHelp());
 		return 0;
 	}
 
@@ -50,6 +59,7 @@ export async function runCli(
 	const commandReadsSettings =
 		command === "validate" ||
 		command === "lock" ||
+		command === "review" ||
 		(command === "cache" && cacheSubcommand !== undefined);
 
 	let settings: StandardsSettings | undefined;
@@ -63,7 +73,9 @@ export async function runCli(
 				throw error;
 			}
 			output.error(formatStandardsSettingsDiagnostic(error));
-			return 1;
+			// Review is a checking command: it exits with status 2 when it
+			// could not run (specs/cli.md exit statuses).
+			return command === "review" ? 2 : 1;
 		}
 	}
 
@@ -84,9 +96,14 @@ export async function runCli(
 		case "lock":
 			return runLockCommand(context);
 		case "review":
-			return runReviewCommand();
+			return runReviewCommand(
+				context,
+				review ?? { targets: [], all: false, format: "text" },
+			);
 		case "cache":
 			return runCacheCommand(context, cacheSubcommand);
+		case "schema":
+			return runSchemaCommand(context, schemaTarget);
 		case "login":
 			return runLoginCommand(context, provider);
 		case "logout":

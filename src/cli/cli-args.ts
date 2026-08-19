@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { z } from "zod/v4";
+import { schemaTargets } from "../schema/schema-files.js";
 import { errorMessage } from "../utils/errors.js";
 
 export const cliCommandSchema = z.enum([
@@ -8,6 +9,7 @@ export const cliCommandSchema = z.enum([
 	"lock",
 	"review",
 	"cache",
+	"schema",
 	"login",
 	"logout",
 ]);
@@ -18,17 +20,42 @@ export const cacheSubcommandSchema = z.enum(["clean", "prune"]);
 
 export type CacheSubcommand = z.infer<typeof cacheSubcommandSchema>;
 
+export const schemaTargetSchema = z.enum(schemaTargets);
+
+export type SchemaTarget = z.infer<typeof schemaTargetSchema>;
+
+export const reviewFormatSchema = z.enum(["text", "json"]);
+
+export type ReviewFormat = z.infer<typeof reviewFormatSchema>;
+
+/** Review is a checking command, so its errors exit with status 2 (specs/cli.md). */
+const REVIEW_ERROR_STATUS = 2;
+
 /** Commands that read from or write to the persistent source cache. */
 const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "lock", "review"];
 
 /** Commands that take one optional model provider argument. */
 const PROVIDER_COMMANDS: CliCommand[] = ["login", "logout"];
 
+/** Validated arguments and options of the `standards review` command. */
+export interface ReviewCliArgs {
+	/** Repository-relative file or directory paths that limit the review. */
+	targets: string[];
+	base?: string;
+	all: boolean;
+	format: ReviewFormat;
+	model?: string;
+	evaluationModel?: string;
+	verificationModel?: string;
+}
+
 /** Validated Standards CLI arguments. */
 export interface ParsedCliArgs {
 	command?: CliCommand;
 	cacheSubcommand?: CacheSubcommand;
+	schemaTarget?: SchemaTarget;
 	provider?: string;
+	review?: ReviewCliArgs;
 	cacheDir?: string;
 	noCache: boolean;
 	help: boolean;
@@ -36,10 +63,20 @@ export interface ParsedCliArgs {
 
 /** An invalid CLI command, argument, or option. */
 export class CliArgumentError extends Error {
-	public constructor(message: string) {
+	public constructor(
+		message: string,
+		/** The exit status of the command whose arguments are invalid. */
+		public readonly exitStatus: number = 1,
+	) {
 		super(message);
 		this.name = "CliArgumentError";
 	}
+}
+
+/** Return the error exit status for the command the arguments name. */
+function argumentErrorStatus(arguments_: readonly string[]): number {
+	const command = arguments_.find((argument) => !argument.startsWith("-"));
+	return command === "review" ? REVIEW_ERROR_STATUS : 1;
 }
 
 /** Parse raw CLI arguments with Node and convert its errors to CLI diagnostics. */
@@ -51,12 +88,21 @@ function parseRawCliArguments(arguments_: readonly string[]) {
 				help: { type: "boolean", short: "h", default: false },
 				"cache-dir": { type: "string" },
 				"no-cache": { type: "boolean", default: false },
+				base: { type: "string" },
+				all: { type: "boolean", default: false },
+				format: { type: "string" },
+				model: { type: "string" },
+				"evaluation-model": { type: "string" },
+				"verification-model": { type: "string" },
 			},
 			allowPositionals: true,
 			strict: true,
 		});
 	} catch (error) {
-		throw new CliArgumentError(errorMessage(error));
+		throw new CliArgumentError(
+			errorMessage(error),
+			argumentErrorStatus(arguments_),
+		);
 	}
 }
 
@@ -79,18 +125,43 @@ export function parseCliArgs(
 		throw new CliArgumentError(`Unknown command '${command}'.`);
 	}
 	const parsedCommand = commandResult.data;
+	const reviewValues: ReviewOptionValues = {
+		base: parsed.values.base,
+		all: Boolean(parsed.values.all),
+		format: parsed.values.format,
+		model: parsed.values.model,
+		evaluationModel: parsed.values["evaluation-model"],
+		verificationModel: parsed.values["verification-model"],
+	};
 
 	if (help) {
 		if (parsedCommand === "cache") {
 			return { command: "cache", cacheDir, noCache: false, help: true };
+		}
+		if (parsedCommand === "review") {
+			return { command: "review", cacheDir, noCache: false, help: true };
 		}
 		throw new CliArgumentError(
 			`Command '${parsedCommand}' does not accept the '--help' option.`,
 		);
 	}
 
+	if (parsedCommand === "review") {
+		return parseReviewCommand(
+			commandArguments,
+			reviewValues,
+			cacheDir,
+			noCache,
+		);
+	}
+	rejectReviewOnlyOptions(parsedCommand, reviewValues);
+
 	if (parsedCommand === "cache") {
 		return parseCacheCommand(commandArguments, cacheDir, noCache);
+	}
+
+	if (parsedCommand === "schema") {
+		return parseSchemaCommand(commandArguments, cacheDir, noCache);
 	}
 
 	if (PROVIDER_COMMANDS.includes(parsedCommand)) {
@@ -124,6 +195,74 @@ export function parseCliArgs(
 	return { command: parsedCommand, cacheDir, noCache, help: false };
 }
 
+/** The raw review option values read from the parsed arguments. */
+interface ReviewOptionValues {
+	base?: string;
+	all: boolean;
+	format?: string;
+	model?: string;
+	evaluationModel?: string;
+	verificationModel?: string;
+}
+
+/** Reject the options that only the `review` command accepts. */
+function rejectReviewOnlyOptions(
+	command: CliCommand,
+	values: ReviewOptionValues,
+): void {
+	const givenOptions: [string, boolean][] = [
+		["--base", values.base !== undefined],
+		["--all", values.all],
+		["--format", values.format !== undefined],
+		["--model", values.model !== undefined],
+		["--evaluation-model", values.evaluationModel !== undefined],
+		["--verification-model", values.verificationModel !== undefined],
+	];
+	const given = givenOptions.find(([, isGiven]) => isGiven);
+	if (given !== undefined) {
+		throw new CliArgumentError(
+			`Command '${command}' does not accept the '${given[0]}' option.`,
+		);
+	}
+}
+
+/** Parse the arguments and options of the `review` command (specs/cli.md). */
+function parseReviewCommand(
+	targets: string[],
+	values: ReviewOptionValues,
+	cacheDir: string | undefined,
+	noCache: boolean,
+): ParsedCliArgs {
+	if (values.all && values.base !== undefined) {
+		throw new CliArgumentError(
+			"Command 'review' does not accept '--all' and '--base' together.",
+			REVIEW_ERROR_STATUS,
+		);
+	}
+	const formatResult = reviewFormatSchema.safeParse(values.format ?? "text");
+	if (!formatResult.success) {
+		throw new CliArgumentError(
+			`Option '--format' expects 'text' or 'json', not '${values.format}'.`,
+			REVIEW_ERROR_STATUS,
+		);
+	}
+	return {
+		command: "review",
+		review: {
+			targets,
+			base: values.base,
+			all: values.all,
+			format: formatResult.data,
+			model: values.model,
+			evaluationModel: values.evaluationModel,
+			verificationModel: values.verificationModel,
+		},
+		cacheDir,
+		noCache,
+		help: false,
+	};
+}
+
 /** Parse the arguments and options of the `login` and `logout` commands. */
 function parseProviderCommand(
 	command: CliCommand,
@@ -153,6 +292,52 @@ function parseProviderCommand(
 		command,
 		provider,
 		cacheDir: undefined,
+		noCache: false,
+		help: false,
+	};
+}
+
+/** Parse the arguments and options of the `schema` command. */
+function parseSchemaCommand(
+	commandArguments: string[],
+	cacheDir: string | undefined,
+	noCache: boolean,
+): ParsedCliArgs {
+	if (cacheDir !== undefined) {
+		throw new CliArgumentError(
+			"Command 'schema' does not accept the '--cache-dir' option.",
+		);
+	}
+	if (noCache) {
+		throw new CliArgumentError(
+			"Command 'schema' does not accept the '--no-cache' option.",
+		);
+	}
+
+	const [target, ...rest] = commandArguments;
+	if (rest.length > 0) {
+		throw new CliArgumentError(
+			"Command 'schema' accepts at most one target argument.",
+		);
+	}
+
+	if (target === undefined) {
+		return {
+			command: "schema",
+			schemaTarget: "config",
+			noCache: false,
+			help: false,
+		};
+	}
+
+	const targetResult = schemaTargetSchema.safeParse(target);
+	if (!targetResult.success) {
+		throw new CliArgumentError(`Unknown schema target '${target}'.`);
+	}
+
+	return {
+		command: "schema",
+		schemaTarget: targetResult.data,
 		noCache: false,
 		help: false,
 	};

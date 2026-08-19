@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getstandards.dev/schemas/v1/standards-lock.schema.json",
   "title": "Standards lock file",
   "description": "Version 1 of the .standards.lock format.",
   "type": "object",
@@ -21,10 +22,10 @@
     "mutableRevision": {
       "oneOf": [
         {
-          "$ref": "./standards.schema.json#/$defs/tagRevision"
+          "$ref": "https://getstandards.dev/schemas/v1/standards.schema.json#/$defs/tagRevision"
         },
         {
-          "$ref": "./standards.schema.json#/$defs/branchRevision"
+          "$ref": "https://getstandards.dev/schemas/v1/standards.schema.json#/$defs/branchRevision"
         }
       ]
     },
@@ -34,13 +35,13 @@
       "required": ["repository", "revision", "commit"],
       "properties": {
         "repository": {
-          "$ref": "./standards.schema.json#/$defs/httpsRepository"
+          "$ref": "https://getstandards.dev/schemas/v1/standards.schema.json#/$defs/httpsRepository"
         },
         "revision": {
           "$ref": "#/$defs/mutableRevision"
         },
         "commit": {
-          "$ref": "./standards.schema.json#/$defs/commitId"
+          "$ref": "https://getstandards.dev/schemas/v1/standards.schema.json#/$defs/commitId"
         }
       }
     }

@@ -1,20 +1,15 @@
 ---
 # yaml-language-server: $schema=./schemas/v1/standards.schema.json
 version: 1
-extends:
-  - git:
-      repository: https://github.com/nlecoy/standards-old
-      revision:
-        branch: chore/pull
-      path: .standards.yml
 rules:
-  - id: clickhouse.nullable-columns
-    description: Avoid nullable columns
+  - id: clickhouse.ttl-only-drop-parts
+    description: Use settings ttl_only_drop_part when using ClickHouse TTL
     rationale: >
-      Nullable column (e.g. Nullable(String)) creates a separate column of UInt8 type.
-      This additional column has to be processed every time a user works with a Nullable column.
-      This leads to additional storage space used and almost always negatively affects performance.
-    level: SHOULD NOT
+      ClickHouse deletes TTL-expired rows through a periodic background job. Since a
+      part can hold both expired and non-expired rows, ClickHouse rewrites it rather
+      than dropping it. Set ttl_only_drop_part = 1 to drop a part only when all of
+      its data has expired.
+    level: MUST
     applies_to:
       include:
         - "**/*.sql"

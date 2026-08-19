@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getstandards.dev/schemas/v1/standards.schema.json",
   "title": "Standards configuration",
   "description": "Version 1 of the .standards.yml configuration format.",
   "type": "object",

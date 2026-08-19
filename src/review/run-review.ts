@@ -15,6 +15,11 @@ import {
 	type ReviewCounts,
 	type ReviewReport,
 } from "./review-report.js";
+import {
+	filterChangedFilesByTargets,
+	normalizeTarget,
+	validateTargets,
+} from "./review-target.js";
 import { selectRules } from "./rule-selection.js";
 import { runVerification } from "./verification-step.js";
 
@@ -26,6 +31,8 @@ export interface RunReviewInput {
 	headRevision: string;
 	/** The head checkout directory, which Git and the agents read. */
 	workingDirectory: string;
+	/** Repository-relative paths that limit the review. Empty means the whole change. */
+	targets?: readonly string[];
 	/** The ordered rule set produced by resolution. */
 	ruleSet: readonly Rule[];
 	/** The SDK model collection that runs the agent steps. */
@@ -34,14 +41,18 @@ export interface RunReviewInput {
 	modelOptions?: ModelSelectionOptions;
 	environment: NodeJS.ProcessEnv;
 	settings?: StandardsSettings;
+	/** Receives the selected file and task counts before the evaluation step. */
+	reportProgress?: (line: string) => void;
 	signal?: AbortSignal;
 }
 
 /**
  * Run one review and return its report (specs/review.md pipeline).
  *
- * It resolves the models, computes the change, selects rules, plans tasks,
- * evaluates, verifies, and renders the report. An empty selection ends the
+ * It resolves the models, computes the change, discards changed files that no
+ * target matches, selects rules, plans tasks, evaluates, verifies, and renders
+ * the report. A target that does not exist in the head revision and matches no
+ * deleted file throws ReviewTargetError. An empty selection ends the
  * review with a compliant conclusion and zero model invocations. A provider
  * failure throws ReviewProviderError, so the review never reports a conclusion
  * from a change it did not fully evaluate.
@@ -54,11 +65,21 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		models: input.models,
 	});
 
-	const changedFiles = await computeChange({
+	const allChangedFiles = await computeChange({
 		baseRevision: input.baseRevision,
 		headRevision: input.headRevision,
 		workingDirectory: input.workingDirectory,
 	});
+	const targets = (input.targets ?? []).map(normalizeTarget);
+	if (targets.length > 0) {
+		await validateTargets({
+			targets,
+			headRevision: input.headRevision,
+			workingDirectory: input.workingDirectory,
+			changedFiles: allChangedFiles,
+		});
+	}
+	const changedFiles = filterChangedFilesByTargets(allChangedFiles, targets);
 	const selections = selectRules(input.ruleSet, changedFiles);
 
 	const selectedRuleIds = new Set(
@@ -83,6 +104,11 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 	}
 
 	const tasks = planEvaluationTasks(selections);
+	input.reportProgress?.(
+		`Evaluating ${selections.length} selected file${
+			selections.length === 1 ? "" : "s"
+		} in ${tasks.length} evaluation task${tasks.length === 1 ? "" : "s"}.`,
+	);
 	const evaluationModel = resolveStepModel(
 		input.models,
 		selectedModels.evaluation,
