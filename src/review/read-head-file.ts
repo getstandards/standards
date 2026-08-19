@@ -1,10 +1,12 @@
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
+	type Static,
 	type Tool,
 	type ToolCall,
 	type ToolResultMessage,
 	Type,
+	validateToolCall,
 } from "@earendil-works/pi-ai";
 import { errorMessage } from "../utils/errors.js";
 
@@ -15,7 +17,7 @@ import { errorMessage } from "../utils/errors.js";
  * executor confines every read to the head checkout, so the agent cannot read
  * outside it (specs/review.md security considerations).
  */
-export const readHeadFileTool: Tool = {
+export const readHeadFileTool = {
 	name: "read_file",
 	description:
 		"Read a file from the head checkout to see more context around a hunk. " +
@@ -32,7 +34,7 @@ export const readHeadFileTool: Tool = {
 			Type.Integer({ description: "Last line to read, 1-based." }),
 		),
 	}),
-};
+} as const satisfies Tool;
 
 /** The outcome of a head checkout read: the numbered text, or why it failed. */
 export type HeadRegionResult =
@@ -95,11 +97,15 @@ export async function executeReadHeadFile(
 	headCheckoutDir: string,
 	toolCall: ToolCall,
 ): Promise<ToolResultMessage> {
+	const toolArguments = validateToolCall(
+		[readHeadFileTool],
+		toolCall,
+	) as Static<typeof readHeadFileTool.parameters>;
 	const region = await readHeadRegion(
 		headCheckoutDir,
-		String(toolCall.arguments.path ?? ""),
-		toCount(toolCall.arguments.start_line),
-		toCount(toolCall.arguments.end_line),
+		toolArguments.path,
+		toolArguments.start_line,
+		toolArguments.end_line,
 	);
 	return {
 		role: "toolResult",
@@ -126,11 +132,4 @@ function numberedLines(
 		selected.push(`${lineNumber}\t${lines[lineNumber - 1] ?? ""}`);
 	}
 	return selected.join("\n");
-}
-
-/** Read a positive line number argument, or undefined when it is absent. */
-function toCount(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isInteger(value)
-		? value
-		: undefined;
 }

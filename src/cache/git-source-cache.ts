@@ -58,7 +58,7 @@ async function pathExists(candidatePath: string): Promise<boolean> {
 }
 
 /** Return whether a rename failed because the target already exists. */
-function isTargetExistsError(error: unknown): boolean {
+function isTargetExistsError<Thrown>(error: Thrown): boolean {
 	return (
 		typeof error === "object" &&
 		error !== null &&

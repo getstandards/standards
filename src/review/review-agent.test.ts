@@ -1,4 +1,4 @@
-import type { Api, Model, Models, Tool } from "@earendil-works/pi-ai";
+import type { Tool } from "@earendil-works/pi-ai";
 import {
 	createModels,
 	fauxAssistantMessage,
@@ -10,21 +10,17 @@ import {
 import { describe, expect, it } from "vitest";
 import { ReviewProviderError, runReviewAgent } from "./review-agent.js";
 
-const echoTool: Tool = {
+const echoTool = {
 	name: "report_echo",
 	description: "Return the echoed text.",
 	parameters: Type.Object({ text: Type.String() }),
-};
+} as const satisfies Tool;
 
-function fauxModels(): {
-	models: Models;
-	model: Model<Api>;
-	faux: ReturnType<typeof fauxProvider>;
-} {
+function fauxModels() {
 	const faux = fauxProvider();
 	const models = createModels();
 	models.setProvider(faux.provider);
-	return { models, model: faux.getModel() as Model<Api>, faux };
+	return { models, model: faux.getModel(), faux };
 }
 
 const noRetries = { enabled: false, maxRetries: 0, baseDelayMs: 0 };
@@ -36,7 +32,7 @@ describe("runReviewAgent", () => {
 			fauxAssistantMessage([fauxToolCall("report_echo", { text: "hello" })]),
 		]);
 
-		const result = await runReviewAgent<string>({
+		const result = await runReviewAgent({
 			models,
 			model,
 			step: "evaluation",
@@ -61,7 +57,7 @@ describe("runReviewAgent", () => {
 			}),
 		]);
 
-		const error = await runReviewAgent<string>({
+		const review = runReviewAgent({
 			models,
 			model,
 			step: "verification",
@@ -71,20 +67,20 @@ describe("runReviewAgent", () => {
 			parseOutput: (toolArguments) => String(toolArguments.text),
 			headCheckoutDir: process.cwd(),
 			retryPolicy: noRetries,
-		}).catch((thrown) => thrown);
+		});
 
-		expect(error).toBeInstanceOf(ReviewProviderError);
-		expect((error as ReviewProviderError).step).toBe("verification");
-		expect((error as ReviewProviderError).providerMessage).toContain(
-			"rate limited",
-		);
+		await expect(review).rejects.toBeInstanceOf(ReviewProviderError);
+		await expect(review).rejects.toMatchObject({
+			step: "verification",
+			providerMessage: expect.stringContaining("rate limited"),
+		});
 	});
 
 	it("fails when the model never calls the output tool", async () => {
 		const { models, model, faux } = fauxModels();
 		faux.setResponses([fauxAssistantMessage([fauxText("here is prose")])]);
 
-		const error = await runReviewAgent<string>({
+		const review = runReviewAgent({
 			models,
 			model,
 			step: "evaluation",
@@ -95,9 +91,11 @@ describe("runReviewAgent", () => {
 			headCheckoutDir: process.cwd(),
 			retryPolicy: noRetries,
 			maxTurns: 1,
-		}).catch((thrown) => thrown);
+		});
 
-		expect(error).toBeInstanceOf(ReviewProviderError);
-		expect((error as ReviewProviderError).kind).toBe("no-structured-output");
+		await expect(review).rejects.toBeInstanceOf(ReviewProviderError);
+		await expect(review).rejects.toMatchObject({
+			kind: "no-structured-output",
+		});
 	});
 });

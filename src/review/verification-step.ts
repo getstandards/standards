@@ -69,14 +69,17 @@ export async function runVerification(
 	input: VerificationInput,
 ): Promise<VerificationOutput> {
 	const rulesById = new Map(input.ruleSet.map((rule) => [rule.id, rule]));
-	const candidates = dedupeFindings(input.findings).filter((finding) =>
-		rulesById.has(finding.rule),
-	);
+	const candidates: Array<{ finding: Finding; rule: Rule }> = [];
+	for (const finding of dedupeFindings(input.findings)) {
+		const rule = rulesById.get(finding.rule);
+		if (rule !== undefined) {
+			candidates.push({ finding, rule });
+		}
+	}
 
 	const results = await Promise.all(
-		candidates.map(async (finding) => {
-			const rule = rulesById.get(finding.rule) as Rule;
-			const result = await runReviewAgent<boolean>({
+		candidates.map(async ({ finding, rule }) => {
+			const result = await runReviewAgent({
 				models: input.models,
 				model: input.model,
 				step: "verification",
@@ -87,7 +90,7 @@ export async function runVerification(
 					input.headCheckoutDir,
 				),
 				outputTool: reportVerdictTool,
-				parseOutput: (toolArguments) => toolArguments.confirmed === true,
+				parseOutput: (toolArguments) => toolArguments.confirmed,
 				headCheckoutDir: input.headCheckoutDir,
 				signal: input.signal,
 			});

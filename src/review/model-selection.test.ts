@@ -1,6 +1,7 @@
 import type { Models } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import { createAutomationModels } from "../credentials/models-runtime.js";
+import { modelReferenceSchema } from "./model-reference.js";
 import {
 	ModelSelectionError,
 	resolveSelectedModels,
@@ -54,7 +55,10 @@ describe("resolveSelectedModels", () => {
 		const selected = await resolveSelectedModels({
 			options: { model: "anthropic/claude-opus-5" },
 			environment: { STANDARDS_MODEL: "anthropic/claude-sonnet-5" },
-			settings: { version: 1, model: "anthropic/claude-haiku-5" as never },
+			settings: {
+				version: 1,
+				model: modelReferenceSchema.parse("anthropic/claude-haiku-5"),
+			},
 			models: modelsWithCredentials("anthropic"),
 		});
 
@@ -104,14 +108,14 @@ describe("resolveSelectedModels", () => {
 	});
 
 	it("fails when a selected provider has no usable credential", async () => {
-		const error = await resolveSelectedModels({
+		const review = resolveSelectedModels({
 			options: { model: "openai/gpt-5.5" },
 			environment: {},
 			models: modelsWithCredentials("anthropic"),
-		}).catch((thrown) => thrown);
+		});
 
-		expect(error).toBeInstanceOf(ModelSelectionError);
-		expect((error as ModelSelectionError).message).toMatch(
+		await expect(review).rejects.toBeInstanceOf(ModelSelectionError);
+		await expect(review).rejects.toThrow(
 			/names provider 'openai', which has no usable credential/,
 		);
 	});

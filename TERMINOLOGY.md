@@ -11,6 +11,7 @@ Canonical words used across Standards code and documentation.
 - **entry file** — The `.standards.yml` at the repository root that starts resolution.
 - **extends** — An ordered list of other configuration sources loaded before the current file's own rules.
 - **extension cycle** — A resolution failure that occurs when a source extends itself, directly or indirectly.
+- **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
 - **level** — The requirement level of a rule: `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, or `MAY` (RFC 2119).
@@ -20,7 +21,7 @@ Canonical words used across Standards code and documentation.
 - **references** — A rule field with supporting URLs or repository-relative paths.
 - **repository root** — The canonicalized root directory where `.standards.yml` and `.standards.lock` must live.
 - **resolution** — The process that loads the entry file, walks the configuration graph, substitutes locked commits, merges rules, and rejects duplicates and cycles.
-- **review** — The act of an agent that evaluates a pull request's changes against the resolved rule set.
+- **review** — The act of an agent that evaluates a change — the hunks between a base and a head revision — against the resolved rule set.
 - **revision** — The Git state to load for a source: exactly one of `commit`, `tag`, or `branch`.
 - **rule** — One testable statement of required, prohibited, or recommended behavior (`id`, `level`, `description`, `rationale`, `applies_to`, `guidance`, `references`).
 - **rule set** — The collection of rules that a configuration declares, or the flattened ordered list after resolution.

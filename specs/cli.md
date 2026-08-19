@@ -99,6 +99,7 @@ These options control command input and output:
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
 | `--base <revision>` | Review the change since `<revision>` instead of the default base. | `review` |
+| `--all` | Run a full review: review every tracked file of the head revision. | `review` |
 | `--format <format>` | Output format: `text` (default) or `json`. | `review`, `rules` |
 
 With `--format json`, the command MUST write exactly one JSON document to
@@ -228,12 +229,29 @@ directory.
 The head revision is the checkout's `HEAD`. The base revision resolves in
 this priority order:
 
-1. The `--base <revision>` option, accepting any revision that Git can
+1. The `--all` option, which selects the empty tree as the base revision.
+2. The `--base <revision>` option, accepting any revision that Git can
    resolve.
-2. The merge base of `HEAD` and the remote default branch.
+3. The merge base of `HEAD` and the remote default branch.
 
-When no `--base` is given and the merge base cannot be resolved, the command
-MUST fail with a diagnostic that asks for `--base` and exit with status `2`.
+When neither `--all` nor `--base` is given and the merge base cannot be
+resolved, the command MUST fail with a diagnostic that asks for `--base` or
+`--all` and exit with status `2`.
+
+### `review --all`
+
+`standards review --all` runs a full review, as defined in
+[Standards review](./review.md): the base revision is the empty tree, so
+the change contains every tracked file of the head revision as an added
+file. The pipeline, the report, and the exit statuses are unchanged.
+
+`--all` and `--base` select the same input, so an invocation that gives
+both MUST fail with a diagnostic and exit with status `2`.
+
+A full review reads the whole repository through the selected models and
+costs tokens in proportion to the repository size. The command MUST report
+the number of selected files and evaluation tasks to standard error before
+the evaluation step starts.
 
 The command MUST write the report to standard output: the text rendering by
 default, or the machine-readable report with `--format json`, as defined in

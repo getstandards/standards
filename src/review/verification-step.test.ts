@@ -1,4 +1,4 @@
-import type { Api, FauxResponseFactory, Model } from "@earendil-works/pi-ai";
+import type { FauxResponseFactory } from "@earendil-works/pi-ai";
 import {
 	createModels,
 	fauxAssistantMessage,
@@ -72,7 +72,7 @@ describe("runVerification", () => {
 
 		const output = await runVerification({
 			models,
-			model: faux.getModel() as Model<Api>,
+			model: faux.getModel(),
 			findings: [
 				finding({ path: "invoice.ts", lines: [1, 1] }),
 				finding({ path: "order.ts", lines: [1, 1] }),

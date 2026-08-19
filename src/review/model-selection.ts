@@ -163,7 +163,9 @@ async function credentialedProviders(models: Models): Promise<Set<string>> {
 function fallbackToCredentialedProvider(
 	credentialed: Set<string>,
 ): ModelReference {
-	if (credentialed.size === 0) {
+	const providers = [...credentialed];
+	const provider = providers[0];
+	if (provider === undefined) {
 		throw new ModelSelectionError(`Standards review could not select a model.
 
 Problem:
@@ -173,8 +175,8 @@ Next action:
   Run 'standards login <provider>', or set a provider API key environment
   variable, then run the review again.`);
 	}
-	if (credentialed.size > 1) {
-		const providerList = [...credentialed]
+	if (providers.length > 1) {
+		const providerList = providers
 			.sort((a, b) => a.localeCompare(b))
 			.map((id) => `  ${id}`)
 			.join("\n");
@@ -189,7 +191,6 @@ ${providerList}
 Next action:
   Select a model with --model <provider>/<model>, or a per-step option.`);
 	}
-	const provider = [...credentialed][0] as string;
 	const model = DEFAULT_PROVIDER_MODELS[provider];
 	if (model === undefined) {
 		throw new ModelSelectionError(`Standards review could not select a model.
@@ -200,7 +201,7 @@ Problem:
 Next action:
   Select a model with --model ${provider}/<model>, or a per-step option.`);
 	}
-	return `${provider}/${model}` as ModelReference;
+	return modelReferenceSchema.parse(`${provider}/${model}`);
 }
 
 /** Confirm the reference's provider has a usable credential or throw a diagnostic. */

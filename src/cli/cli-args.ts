@@ -42,13 +42,10 @@ export class CliArgumentError extends Error {
 	}
 }
 
-/** Parse and validate Standards CLI arguments. */
-export function parseCliArgs(
-	arguments_: string[] = process.argv.slice(2),
-): ParsedCliArgs {
-	let parsed: ReturnType<typeof parseArgs>;
+/** Parse raw CLI arguments with Node and convert its errors to CLI diagnostics. */
+function parseRawCliArguments(arguments_: readonly string[]) {
 	try {
-		parsed = parseArgs({
+		return parseArgs({
 			args: arguments_,
 			options: {
 				help: { type: "boolean", short: "h", default: false },
@@ -61,10 +58,16 @@ export function parseCliArgs(
 	} catch (error) {
 		throw new CliArgumentError(errorMessage(error));
 	}
+}
 
+/** Parse and validate Standards CLI arguments. */
+export function parseCliArgs(
+	arguments_: string[] = process.argv.slice(2),
+): ParsedCliArgs {
+	const parsed = parseRawCliArguments(arguments_);
 	const help = Boolean(parsed.values.help);
 	const noCache = Boolean(parsed.values["no-cache"]);
-	const cacheDir = parsed.values["cache-dir"] as string | undefined;
+	const cacheDir = parsed.values["cache-dir"];
 	const [command, ...commandArguments] = parsed.positionals;
 
 	if (command === undefined) {

@@ -1,7 +1,6 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Api, Model } from "@earendil-works/pi-ai";
 import {
 	createModels,
 	fauxAssistantMessage,
@@ -79,7 +78,7 @@ describe("runEvaluation", () => {
 
 		const output = await runEvaluation({
 			models,
-			model: faux.getModel() as Model<Api>,
+			model: faux.getModel(),
 			tasks: [taskFor(file)],
 			headCheckoutDir: process.cwd(),
 		});
@@ -117,7 +116,7 @@ describe("runEvaluation", () => {
 
 		const output = await runEvaluation({
 			models,
-			model: faux.getModel() as Model<Api>,
+			model: faux.getModel(),
 			tasks: [taskFor(file)],
 			headCheckoutDir: directory,
 		});

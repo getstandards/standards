@@ -81,14 +81,14 @@ export async function runEvaluation(
 ): Promise<EvaluationOutput> {
 	const results = await Promise.all(
 		input.tasks.map((task) =>
-			runReviewAgent<Finding[]>({
+			runReviewAgent({
 				models: input.models,
 				model: input.model,
 				step: "evaluation",
 				systemPrompt: EVALUATION_SYSTEM_PROMPT,
 				userText: formatEvaluationTask(task),
 				outputTool: reportFindingsTool,
-				parseOutput: parseFindings,
+				parseOutput: (toolArguments) => toolArguments.findings,
 				headCheckoutDir: input.headCheckoutDir,
 				signal: input.signal,
 			}),
@@ -102,18 +102,6 @@ export async function runEvaluation(
 		findings.push(...result.output);
 	}
 	return { findings, usage };
-}
-
-/** Map the validated report_findings arguments to findings. */
-function parseFindings(toolArguments: Record<string, unknown>): Finding[] {
-	const findings = toolArguments.findings as Finding[];
-	return findings.map((finding) => ({
-		rule: finding.rule,
-		path: finding.path,
-		lines: [finding.lines[0], finding.lines[1]],
-		evidence: finding.evidence,
-		reason: finding.reason,
-	}));
 }
 
 /** Render one evaluation task as the agent's user message. */

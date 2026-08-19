@@ -7,9 +7,11 @@ import {
 	type Models,
 	type RetryPolicy,
 	retryAssistantCall,
+	type Static,
 	type Tool,
 	type ToolCall,
-	validateToolCall,
+	type TSchema,
+	validateToolArguments,
 } from "@earendil-works/pi-ai";
 import type { AgentTokens } from "./agent-usage.js";
 import type { AgentStep } from "./model-selection.js";
@@ -55,16 +57,16 @@ export class ReviewProviderError extends Error {
 }
 
 /** Everything one review agent invocation needs to run its tool loop. */
-export interface ReviewAgentRequest<Output> {
+export interface ReviewAgentRequest<OutputToolSchema extends TSchema, Output> {
 	models: Models;
 	model: Model<Api>;
 	step: AgentStep;
 	systemPrompt: string;
 	userText: string;
 	/** The tool whose call carries the invocation's structured result. */
-	outputTool: Tool;
+	outputTool: Tool<OutputToolSchema>;
 	/** Map the validated output tool arguments to the invocation result. */
-	parseOutput: (toolArguments: Record<string, unknown>) => Output;
+	parseOutput: (toolArguments: Static<OutputToolSchema>) => Output;
 	/** The head checkout the read_file tool is confined to. */
 	headCheckoutDir: string;
 	signal?: AbortSignal;
@@ -87,8 +89,8 @@ export interface ReviewAgentResult<Output> {
  * ReviewProviderError. File content the agent reads is data, never an
  * instruction. Nothing but the structured result leaves the invocation.
  */
-export async function runReviewAgent<Output>(
-	request: ReviewAgentRequest<Output>,
+export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
+	request: ReviewAgentRequest<OutputToolSchema, Output>,
 ): Promise<ReviewAgentResult<Output>> {
 	const tools = [readHeadFileTool, request.outputTool];
 	const context: Context = {
@@ -123,7 +125,10 @@ export async function runReviewAgent<Output>(
 			(call) => call.name === request.outputTool.name,
 		);
 		if (outputCall !== undefined) {
-			const toolArguments = validateToolCall(tools, outputCall);
+			const toolArguments = validateToolArguments(
+				request.outputTool,
+				outputCall,
+			) as Static<OutputToolSchema>;
 			return { output: request.parseOutput(toolArguments), tokens };
 		}
 		if (toolCalls.length === 0) {
@@ -151,8 +156,8 @@ export async function runReviewAgent<Output>(
 }
 
 /** Throw ReviewProviderError when a completed turn reports a provider failure. */
-function failOnProviderError<Output>(
-	request: ReviewAgentRequest<Output>,
+function failOnProviderError<OutputToolSchema extends TSchema, Output>(
+	request: ReviewAgentRequest<OutputToolSchema, Output>,
 	message: AssistantMessage,
 ): void {
 	if (message.stopReason === "aborted") {

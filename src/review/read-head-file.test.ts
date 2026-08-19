@@ -1,9 +1,12 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ToolCall } from "@earendil-works/pi-ai";
+import type { Static, ToolCall } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { executeReadHeadFile } from "./read-head-file.js";
+import {
+	executeReadHeadFile,
+	type readHeadFileTool,
+} from "./read-head-file.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -13,7 +16,9 @@ async function makeCheckout(): Promise<string> {
 	return directory;
 }
 
-function readFileCall(argumentsValue: ToolCall["arguments"]): ToolCall {
+function readFileCall(
+	argumentsValue: Static<typeof readHeadFileTool.parameters>,
+): ToolCall {
 	return {
 		type: "toolCall",
 		id: "call-1",
@@ -60,5 +65,15 @@ describe("executeReadHeadFile", () => {
 		expect(result.content[0]).toMatchObject({
 			text: expect.stringContaining("outside the head checkout"),
 		});
+	});
+
+	it("rejects a call for a different tool", async () => {
+		const directory = await makeCheckout();
+		const toolCall = readFileCall({ path: "a.ts" });
+		toolCall.name = "write_file";
+
+		await expect(executeReadHeadFile(directory, toolCall)).rejects.toThrow(
+			'Tool "write_file" not found',
+		);
 	});
 });

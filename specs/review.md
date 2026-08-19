@@ -8,8 +8,8 @@ A review evaluates a change — the hunks between a base and a head revision —
 against the resolved rule set and reports the result. The change can come
 from anywhere: a pull request, a local branch, or a working tree state that
 the invoking surface turned into two revisions. This document specifies the review pipeline: its steps,
-which steps use an agent, what each step receives and returns, and the budget
-rules that bound token use.
+which steps use an agent, what each step receives and returns, and the rules
+that keep token use low.
 
 The pipeline has one economic goal: spend the minimum number of model tokens
 for the maximum number of correct findings. Two design rules follow from this
@@ -57,6 +57,27 @@ and head revisions. The change is the set of hunks between the base and head
 revisions. Resolution follows
 [Standards configuration format](./configuration.md): the lock file supplies
 every mutable revision, and a review MUST NOT resolve a tag or branch again.
+
+### Full review
+
+A full review evaluates the whole project instead of one change. The
+invoking surface selects the empty tree as the base revision. Git resolves
+the empty tree in every repository, so the change contains every tracked
+file of the head revision as an added file. Every pipeline step runs on this
+change without modification. The `--all` option of `standards review`,
+defined in [Standards CLI](./cli.md), requests a full review.
+
+A full review is an audit, not a merge gate. It shows what the rule set
+finds in the code that exists today: before a repository adopts a rule set,
+or after a rule set change. Suppression markers in the head revision apply
+as in any review.
+
+A full review sends every selected file through the evaluation step, so its
+token cost grows with the repository, not with a change. The report's
+counts and usage show that cost. The implementation SHOULD
+report the number of selected files and evaluation tasks as progress before
+the evaluation step starts, so a user can interrupt a run that is larger
+than expected.
 
 ## Model selection
 
@@ -217,9 +238,6 @@ grouping would send the same hunk once per rule. Therefore:
 - A task MAY contain several files. The implementation SHOULD pack small files
   into shared tasks, and SHOULD keep files that share the same rule subset in
   the same task.
-- Every task MUST fit a task context budget that the implementation defines.
-  When one file's hunks exceed the budget, the implementation MUST split them
-  across tasks by hunk and repeat the file's rules in each part.
 
 Planning MUST be deterministic so that a review is reproducible and
 auditable.
@@ -237,9 +255,8 @@ The agent receives:
 - The task's hunks, with enough surrounding lines to read them.
 
 The agent MAY read more content from the head checkout when a hunk alone is
-not enough to judge a rule. The implementation SHOULD bound these reads with a
-per-task budget. The agent MUST NOT read outside the head checkout and MUST
-NOT fetch URLs.
+not enough to judge a rule. The agent MUST NOT read outside the head checkout
+and MUST NOT fetch URLs.
 
 The agent returns findings and nothing else:
 
@@ -314,9 +331,6 @@ The report MUST include:
   present.
 - Each suppressed finding and each invalid suppression marker, as defined in
   [Standards suppressions](./suppressions.md).
-- Every budget effect: each file, hunk, or read that a budget skipped or
-  truncated. Silent truncation would let a review pass without seeing the
-  change.
 
 ### Machine-readable report
 
@@ -354,8 +368,7 @@ as one JSON document:
 		}
 	],
 	"suppressed": [],
-	"invalid_suppressions": [],
-	"budget_effects": []
+	"invalid_suppressions": []
 }
 ```
 
@@ -366,8 +379,6 @@ as one JSON document:
   marker's `suppression_reason`. `invalid_suppressions` lists invalid
   markers with their `path`, `line`, and a `reason`. Both are defined in
   [Standards suppressions](./suppressions.md).
-- `budget_effects` lists every skip or truncation as an object with the
-  affected `path` and a `reason`.
 
 The JSON report MUST contain the same information as the text rendering.
 Fields not listed here MUST NOT be added without a report format version
@@ -384,22 +395,22 @@ handle these failures without producing a wrong conclusion:
   back off between attempts, and SHOULD respect a retry delay that the
   provider names. A retry repeats one invocation; completed tasks are not
   repeated.
-- For a non-transient failure — a rejected credential, an unknown model, or
-  exhausted retries — the review MUST fail as a whole, with a diagnostic
-  that names the step, the provider, and the provider's error.
+- For a non-transient failure — a rejected credential, an unknown model, an
+  input that exceeds the model's context window, or exhausted retries — the
+  review MUST fail as a whole, with a diagnostic that names the step, the
+  provider, and the provider's error.
 - A failed review reports no conclusion. A conclusion from a review that
   skipped part of the change would be wrong by omission, exactly like
   silent truncation. Partial results MAY be logged for diagnosis, but MUST
   NOT be reported as a review outcome.
 
-## Token budget
+## Token economy
 
-These rules bound token use across the pipeline:
+These rules keep token use low across the pipeline:
 
 - Selection, planning, deduplication, and report rendering MUST NOT use a
   model.
-- Each hunk SHOULD reach exactly one evaluation task. Only a budget split can
-  repeat a hunk's rules, never the hunk itself.
+- Each hunk MUST reach exactly one evaluation task.
 - Rule text sent to an agent MUST include only the fields the step uses.
 - Agents read extra context on demand. The implementation MUST NOT preload
   file content beyond the hunks and their surrounding lines.
@@ -450,4 +461,8 @@ This version does not define:
 - Per-rule model selection. Models are selected per agent step, not per rule.
 - Custom endpoints, proxies, or gateway configuration beyond what the
   provider SDK reads from its own environment variables.
-- Spend limits or per-run token ceilings.
+- Budgets, spend limits, and token ceilings: a task size limit, a bound on
+  agent reads, a cap on agent turns, or a per-run token ceiling. The
+  report's usage counts show what a review spent. A later version MAY add
+  budgets as a new feature; a task that exceeds the model's context window
+  fails the review as a provider failure until then.
