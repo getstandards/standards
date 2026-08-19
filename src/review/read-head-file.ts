@@ -34,14 +34,79 @@ export const readHeadFileTool: Tool = {
 	}),
 };
 
-/** Build a tool result that reports a failed or denied read to the agent. */
-function readError(toolCall: ToolCall, text: string): ToolResultMessage {
+/** The outcome of a head checkout read: the numbered text, or why it failed. */
+export type HeadRegionResult =
+	| { ok: true; text: string }
+	| { ok: false; message: string };
+
+/**
+ * Read a line range from the head checkout, confined to it.
+ *
+ * It resolves the requested path through the real head checkout root and denies
+ * any path that escapes it, including through a symlink. The change is
+ * untrusted, so the boundary check is the security boundary, not the agent's
+ * cooperation (specs/review.md security considerations). Output lines carry
+ * their 1-based line number.
+ */
+export async function readHeadRegion(
+	headCheckoutDir: string,
+	relativePath: string,
+	startLine?: number,
+	endLine?: number,
+): Promise<HeadRegionResult> {
+	const realRoot = await realpath(headCheckoutDir);
+	const resolved = path.resolve(realRoot, relativePath);
+
+	let realTarget: string;
+	try {
+		realTarget = await realpath(resolved);
+	} catch (error) {
+		return {
+			ok: false,
+			message: `read_file failed for '${relativePath}': ${errorMessage(error)}`,
+		};
+	}
+	if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+		return {
+			ok: false,
+			message: `read_file denied: '${relativePath}' is outside the head checkout.`,
+		};
+	}
+
+	let content: string;
+	try {
+		content = await readFile(realTarget, "utf8");
+	} catch (error) {
+		return {
+			ok: false,
+			message: `read_file failed for '${relativePath}': ${errorMessage(error)}`,
+		};
+	}
+	return { ok: true, text: numberedLines(content, startLine, endLine) };
+}
+
+/**
+ * Run one `read_file` tool call against the head checkout.
+ *
+ * It returns a tool result the agent can read, whether the read succeeded or
+ * the path was denied or missing.
+ */
+export async function executeReadHeadFile(
+	headCheckoutDir: string,
+	toolCall: ToolCall,
+): Promise<ToolResultMessage> {
+	const region = await readHeadRegion(
+		headCheckoutDir,
+		String(toolCall.arguments.path ?? ""),
+		toCount(toolCall.arguments.start_line),
+		toCount(toolCall.arguments.end_line),
+	);
 	return {
 		role: "toolResult",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
-		content: [{ type: "text", text }],
-		isError: true,
+		content: [{ type: "text", text: region.ok ? region.text : region.message }],
+		isError: !region.ok,
 		timestamp: Date.now(),
 	};
 }
@@ -61,62 +126,6 @@ function numberedLines(
 		selected.push(`${lineNumber}\t${lines[lineNumber - 1] ?? ""}`);
 	}
 	return selected.join("\n");
-}
-
-/**
- * Run one `read_file` tool call against the head checkout.
- *
- * It resolves the requested path through the real head checkout root and
- * denies any path that escapes it, including through a symlink. The change is
- * untrusted, so the boundary check is the security boundary, not the agent's
- * cooperation (specs/review.md security considerations).
- */
-export async function executeReadHeadFile(
-	headCheckoutDir: string,
-	toolCall: ToolCall,
-): Promise<ToolResultMessage> {
-	const requestedPath = String(toolCall.arguments.path ?? "");
-	const realRoot = await realpath(headCheckoutDir);
-	const resolved = path.resolve(realRoot, requestedPath);
-
-	let realTarget: string;
-	try {
-		realTarget = await realpath(resolved);
-	} catch (error) {
-		return readError(
-			toolCall,
-			`read_file failed for '${requestedPath}': ${errorMessage(error)}`,
-		);
-	}
-	if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
-		return readError(
-			toolCall,
-			`read_file denied: '${requestedPath}' is outside the head checkout.`,
-		);
-	}
-
-	let content: string;
-	try {
-		content = await readFile(realTarget, "utf8");
-	} catch (error) {
-		return readError(
-			toolCall,
-			`read_file failed for '${requestedPath}': ${errorMessage(error)}`,
-		);
-	}
-
-	const startLine = toCount(toolCall.arguments.start_line);
-	const endLine = toCount(toolCall.arguments.end_line);
-	return {
-		role: "toolResult",
-		toolCallId: toolCall.id,
-		toolName: toolCall.name,
-		content: [
-			{ type: "text", text: numberedLines(content, startLine, endLine) },
-		],
-		isError: false,
-		timestamp: Date.now(),
-	};
 }
 
 /** Read a positive line number argument, or undefined when it is absent. */
