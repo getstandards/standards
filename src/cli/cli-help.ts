@@ -21,12 +21,8 @@ const COMMANDS: CommandHelp[] = [
 		description: "Review changes against the resolved rules (not implemented)",
 	},
 	{
-		name: "cache clean",
-		description: "Remove every entry in the source cache",
-	},
-	{
-		name: "cache prune",
-		description: "Remove source cache entries the configuration does not use",
+		name: "cache",
+		description: "Manage the source cache (clean, prune)",
 	},
 	{
 		name: "login <provider>",
@@ -35,6 +31,17 @@ const COMMANDS: CommandHelp[] = [
 	{
 		name: "logout <provider>",
 		description: "Remove a stored model provider credential",
+	},
+];
+
+const CACHE_SUBCOMMANDS: CommandHelp[] = [
+	{
+		name: "clean",
+		description: "Remove every entry in the source cache",
+	},
+	{
+		name: "prune",
+		description: "Remove source cache entries the configuration does not use",
 	},
 ];
 
@@ -55,25 +62,44 @@ const OPTIONS: OptionHelp[] = [
 	},
 ];
 
+const CACHE_OPTIONS: OptionHelp[] = [
+	{ name: "-h, --help", description: "Show this help" },
+	{
+		name: "--cache-dir <path>",
+		description: "Use <path> as the source cache directory",
+	},
+];
+
+/** Align name and description pairs into padded help lines. */
+function formatHelpEntries(entries: CommandHelp[]): string[] {
+	const width = Math.max(...entries.map(({ name }) => name.length));
+	return entries.map(
+		({ name, description }) => `  ${name.padEnd(width)}  ${description}`,
+	);
+}
+
 /** Render the top-level CLI help text. */
 export function renderHelp(): string {
-	const commandWidth = Math.max(...COMMANDS.map(({ name }) => name.length));
-	const commandLines = COMMANDS.map(
-		({ name, description }) => `  ${name.padEnd(commandWidth)}  ${description}`,
-	);
-
-	const optionWidth = Math.max(...OPTIONS.map(({ name }) => name.length));
-	const optionLines = OPTIONS.map(
-		({ name, description }) => `  ${name.padEnd(optionWidth)}  ${description}`,
-	);
-
 	return [
 		"Usage: standards <command>",
 		"",
 		"Commands:",
-		...commandLines,
+		...formatHelpEntries(COMMANDS),
 		"",
 		"Options:",
-		...optionLines,
+		...formatHelpEntries(OPTIONS),
+	].join("\n");
+}
+
+/** Render the help text for the `standards cache` command. */
+export function renderCacheHelp(): string {
+	return [
+		"Usage: standards cache <subcommand>",
+		"",
+		"Subcommands:",
+		...formatHelpEntries(CACHE_SUBCOMMANDS),
+		"",
+		"Options:",
+		...formatHelpEntries(CACHE_OPTIONS),
 	].join("\n");
 }

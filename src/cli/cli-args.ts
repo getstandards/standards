@@ -81,6 +81,9 @@ export function parseCliArgs(
 	const parsedCommand = commandResult.data;
 
 	if (help) {
+		if (parsedCommand === "cache") {
+			return { command: "cache", cacheDir, noCache: false, help: true };
+		}
 		throw new CliArgumentError(
 			`Command '${parsedCommand}' does not accept the '--help' option.`,
 		);

@@ -7,7 +7,7 @@ import {
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
-import { renderHelp } from "./cli-help.js";
+import { renderCacheHelp, renderHelp } from "./cli-help.js";
 import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
@@ -35,8 +35,12 @@ export async function runCli(
 
 	const { command, cacheSubcommand, provider, cacheDir, noCache, help } =
 		parsedArguments;
-	if (command === undefined || help) {
+	if (command === undefined) {
 		output.log(renderHelp());
+		return 0;
+	}
+	if (help) {
+		output.log(renderCacheHelp());
 		return 0;
 	}
 

@@ -11,7 +11,7 @@ import { commitObjectIdSchema } from "../../config/configuration-schema.js";
 import { errorMessage, isMissingFileError } from "../../utils/errors.js";
 import type { CacheSubcommand } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";
-import { renderHelp } from "../cli-help.js";
+import { renderCacheHelp } from "../cli-help.js";
 
 /** Remove the whole resolved source cache directory and its buckets. */
 async function cleanSourceCache(
@@ -121,7 +121,7 @@ export async function runCacheCommand(
 ): Promise<number> {
 	if (subcommand === undefined) {
 		context.output.error(
-			`Command 'cache' requires a subcommand.\n\n${renderHelp()}`,
+			`Command 'cache' requires a subcommand.\n\n${renderCacheHelp()}`,
 		);
 		return 1;
 	}

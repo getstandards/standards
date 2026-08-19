@@ -259,7 +259,29 @@ Next action:
 		expect(exitStatus).toBe(1);
 		expect(stdout).toEqual([]);
 		expect(stderr[0]).toContain("Command 'cache' requires a subcommand.");
-		expect(stderr[0]).toContain("Usage: standards <command>");
+		expect(stderr[0]).toContain("Usage: standards cache <subcommand>");
+	});
+
+	it("prints cache help for cache --help", async () => {
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache", "--help"], "/unused", output);
+
+		expect(exitStatus).toBe(0);
+		expect(stdout[0]).toContain("Usage: standards cache <subcommand>");
+		expect(stdout[0]).toContain("clean");
+		expect(stdout[0]).toContain("prune");
+		expect(stderr).toEqual([]);
+	});
+
+	it("prints cache help for cache -h", async () => {
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["cache", "-h"], "/unused", output);
+
+		expect(exitStatus).toBe(0);
+		expect(stdout[0]).toContain("Usage: standards cache <subcommand>");
+		expect(stderr).toEqual([]);
 	});
 
 	it("rejects an unknown cache subcommand", async () => {

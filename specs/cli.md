@@ -22,8 +22,7 @@ The executable name is `standards`. It provides these commands:
 | `standards rules` | List the resolved rule set with each rule's origin. | Planned. |
 | `standards review` | Review changes against the resolved rule set. | Planned. Currently no operation. The pipeline is specified in [Standards review](./review.md). |
 | `standards test` | Run rule tests against the resolved rule set. | Planned. Specified in [Standards rule tests](./testing.md). |
-| `standards cache clean` | Remove every entry in the source cache. | Planned. |
-| `standards cache prune` | Remove source cache entries that the configuration does not reference. | Planned. |
+| `standards cache` | Manage the source cache. Groups the `clean` and `prune` subcommands. | Planned. |
 | `standards login <provider>` | Store a credential for a model provider. | Planned. |
 | `standards logout <provider>` | Remove the stored credential for a model provider. | Planned. |
 
@@ -33,16 +32,17 @@ they MUST exit with status `0` without output or other effects.
 ## General behavior
 
 Running `standards` without a command or with `--help` or `-h` MUST print help
-to standard output and exit with status `0`. Running `standards --version`
-MUST print the application version to standard output and exit with status
-`0`.
+to standard output and exit with status `0`. Root help MUST list `cache` as a
+single command. It MUST NOT list the `cache` subcommands; `standards cache
+--help` prints them. Running `standards --version` MUST print the application
+version to standard output and exit with status `0`.
 
 An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
 
 A command accepts only the positional arguments and options listed for it in
-this specification. No command other than `login` and `logout` accepts a
-positional argument. Supplying an argument or option that a command does not
+this specification. No command other than `login`, `logout`, and `review`
+accepts a positional argument. Supplying an argument or option that a command does not
 accept MUST print a diagnostic to standard error and exit with the command's
 error status defined below.
 
@@ -238,6 +238,26 @@ When neither `--all` nor `--base` is given and the merge base cannot be
 resolved, the command MUST fail with a diagnostic that asks for `--base` or
 `--all` and exit with status `2`.
 
+### Targets
+
+`standards review [target...]` limits the review to part of the change. A
+target is a repository-relative path to a file or a directory.
+
+- A file target selects the changed file at that path.
+- A directory target selects every changed file under that path.
+- Without targets, the review selects every changed file.
+
+Targets filter the changed files. They do not change the base or head
+revision, so they combine with `--base` and with `--all`.
+`standards review --all <dir>` audits the tracked files under `<dir>`.
+
+A target MUST exist in the head revision, or match a deleted file's base
+path. For an invalid target, the command MUST print a diagnostic and exit
+with status `2`. A valid target that matches no changed file is not an
+error: it can produce an empty selection, which ends the review with a
+compliant conclusion and zero model tokens, as defined in
+[Standards review](./review.md).
+
 ### `review --all`
 
 `standards review --all` runs a full review, as defined in
@@ -274,7 +294,9 @@ one test fails, and `2` when the tests could not run or complete.
 `standards cache` manages the persistent source cache defined in
 [Standards source cache](./cache.md). It requires a subcommand. Running
 `standards cache` without a subcommand MUST print a diagnostic and the help text
-to standard error and exit with status `1`.
+to standard error and exit with status `1`. Running `standards cache --help` or
+`standards cache -h` MUST print the help text, which lists the `clean` and
+`prune` subcommands, to standard output and exit with status `0`.
 
 `standards cache clean` MUST remove all buckets under the resolved cache
 directory. It MUST report the removed location and exit with status `0`. If the
