@@ -69,19 +69,25 @@ describe("runReview", () => {
 		const head = await commitAll(directory, "head");
 
 		const { faux, models } = anthropicFaux();
-		// Respond by the system prompt: evaluation calls report_findings,
+		// Respond by the system prompt: evaluation calls report_rule_verdicts,
 		// verification calls report_verdict.
 		const respond: FauxResponseFactory = (context) => {
-			if ((context.systemPrompt ?? "").includes("report_findings")) {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
 				return fauxAssistantMessage([
-					fauxToolCall("report_findings", {
-						findings: [
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
 							{
 								rule: "money.no-float",
 								path: "invoice.ts",
-								lines: [1, 1],
-								evidence: "const total = subtotal * 1.2",
-								reason: "The total is a floating-point number.",
+								verdict: "violated",
+								findings: [
+									{
+										first_line: 1,
+										last_line: 1,
+										evidence: "const total = subtotal * 1.2",
+										reason: "The total is a floating-point number.",
+									},
+								],
 							},
 						],
 					}),
@@ -131,9 +137,18 @@ describe("runReview", () => {
 
 		const { faux, models } = anthropicFaux();
 		const respond: FauxResponseFactory = (context) => {
-			if ((context.systemPrompt ?? "").includes("report_findings")) {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
 				return fauxAssistantMessage([
-					fauxToolCall("report_findings", { findings: [] }),
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								verdict: "compliant",
+								findings: [],
+							},
+						],
+					}),
 				]);
 			}
 			return fauxAssistantMessage([
@@ -175,23 +190,28 @@ describe("runReview", () => {
 		// Evaluation returns two duplicate findings; verification rejects the
 		// one that survives deduplication, so the review reports no finding.
 		const respond: FauxResponseFactory = (context) => {
-			if ((context.systemPrompt ?? "").includes("report_findings")) {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
 				return fauxAssistantMessage([
-					fauxToolCall("report_findings", {
-						findings: [
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
 							{
 								rule: "money.no-float",
 								path: "invoice.ts",
-								lines: [1, 1],
-								evidence: "const total = subtotal * 1.2",
-								reason: "The total is a floating-point number.",
-							},
-							{
-								rule: "money.no-float",
-								path: "invoice.ts",
-								lines: [1, 2],
-								evidence: "const total = subtotal * 1.2",
-								reason: "The total is a floating-point number.",
+								verdict: "violated",
+								findings: [
+									{
+										first_line: 1,
+										last_line: 1,
+										evidence: "const total = subtotal * 1.2",
+										reason: "The total is a floating-point number.",
+									},
+									{
+										first_line: 1,
+										last_line: 2,
+										evidence: "const total = subtotal * 1.2",
+										reason: "The total is a floating-point number.",
+									},
+								],
 							},
 						],
 					}),

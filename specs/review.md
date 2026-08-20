@@ -205,7 +205,7 @@ A review runs five steps in order:
 | --- | --- | --- | --- | --- |
 | 1 | Selection | Deterministic | Rule set, changed files, targets | Selected rules per file |
 | 2 | Planning | Deterministic | Selected rules, hunks | Evaluation tasks |
-| 3 | Evaluation | One agent per task | Task rules, task hunks | Findings |
+| 3 | Evaluation | One agent per task | Task rules, task hunks | Rule verdicts with findings |
 | 4 | Verification | One agent per finding | Finding, rule, code region | Confirmed findings |
 | 5 | Report | Deterministic | Confirmed findings | Report and conclusion |
 
@@ -269,20 +269,32 @@ The agent MAY read more content from the head checkout when a hunk alone is
 not enough to judge a rule. The agent MUST NOT read outside the head checkout
 and MUST NOT fetch URLs.
 
-The agent returns findings and nothing else:
+The agent returns one verdict for every rule and file pair in the task, and
+nothing else. The verdict list is a checklist: the agent cannot return
+without a decision on every rule, which guards recall when one task carries
+several rules.
 
 | Field | Meaning |
 | --- | --- |
-| `rule` | The violated rule's `id`. |
+| `rule` | The judged rule's `id`. |
 | `path` | The changed file path. |
-| `lines` | The violating line range in the head revision, or in the base revision for a deleted file. |
+| `verdict` | `compliant` or `violated`. |
+| `findings` | One finding per violation. Empty when the verdict is `compliant`. |
+
+Each finding carries:
+
+| Field | Meaning |
+| --- | --- |
+| `first_line` | The first violating line in the head revision, or in the base revision for a deleted file. |
+| `last_line` | The last violating line, in the same revision as `first_line`. |
 | `evidence` | A short quote from the change that shows the violation. |
 | `reason` | One or two sentences that connect the evidence to the rule. |
 
-The agent MUST NOT return a prose report and MUST NOT enumerate compliant
-rules. The report derives coverage from the plan, not from agent output.
-File applicability is a filter, not proof of relevance, so the agent MUST
-discard a task rule that does not apply to the change it sees.
+The agent MUST NOT return a prose report. The implementation MUST discard
+compliant verdicts and keep only the findings of violated verdicts; the
+report derives coverage from the plan, not from agent output. File
+applicability is a filter, not proof of relevance, so the agent MUST mark a
+rule compliant when it does not apply to the change it sees.
 
 ### Step 4: Verification
 

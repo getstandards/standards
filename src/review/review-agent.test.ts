@@ -48,6 +48,42 @@ describe("runReviewAgent", () => {
 		expect(result.tokens.input).toBeGreaterThan(0);
 	});
 
+	it("repeats the turn without temperature when the provider rejects it", async () => {
+		const { models, model, faux } = fauxModels();
+		const temperatures: Array<number | undefined> = [];
+		faux.setResponses([
+			(_context, options) => {
+				temperatures.push(options?.temperature);
+				return fauxAssistantMessage("", {
+					stopReason: "error",
+					errorMessage:
+						"400: invalid temperature: only 1 is allowed for this model",
+				});
+			},
+			(_context, options) => {
+				temperatures.push(options?.temperature);
+				return fauxAssistantMessage([
+					fauxToolCall("report_echo", { text: "hello" }),
+				]);
+			},
+		]);
+
+		const result = await runReviewAgent({
+			models,
+			model,
+			step: "evaluation",
+			systemPrompt: "system",
+			userText: "user",
+			outputTool: echoTool,
+			parseOutput: (toolArguments) => String(toolArguments.text),
+			headCheckoutDir: process.cwd(),
+			retryPolicy: noRetries,
+		});
+
+		expect(result.output).toBe("hello");
+		expect(temperatures).toEqual([0, undefined]);
+	});
+
 	it("fails with a provider error when a turn reports an error", async () => {
 		const { models, model, faux } = fauxModels();
 		faux.setResponses([

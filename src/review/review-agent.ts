@@ -102,12 +102,16 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 	};
 	const maxTurns = request.maxTurns ?? DEFAULT_MAX_TURNS;
 	const tokens: AgentTokens = { input: 0, output: 0 };
+	// Greedy decoding keeps repeated reviews of the same change as stable as
+	// the provider allows.
+	let sendTemperature = true;
 
 	for (let turn = 0; turn < maxTurns; turn += 1) {
 		const message = await retryAssistantCall(
 			() =>
 				request.models.completeSimple(request.model, context, {
 					signal: request.signal,
+					temperature: sendTemperature ? 0 : undefined,
 				}),
 			request.retryPolicy ?? DEFAULT_RETRY_POLICY,
 			request.signal,
@@ -115,6 +119,12 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		tokens.input += message.usage.input;
 		tokens.output += message.usage.output;
 
+		// Some providers accept only their default temperature (OpenCode's
+		// kimi-k3 rejects everything but 1). Repeat the turn without the field.
+		if (sendTemperature && isTemperatureRejectedError(message)) {
+			sendTemperature = false;
+			continue;
+		}
 		failOnProviderError(request, message);
 		context.messages.push(message);
 
@@ -152,6 +162,14 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		request.model.id,
 		"no-structured-output",
 		`The model did not return a ${request.outputTool.name} result within ${maxTurns} turns.`,
+	);
+}
+
+/** True when the provider rejected the request's temperature value. */
+function isTemperatureRejectedError(message: AssistantMessage): boolean {
+	return (
+		message.stopReason === "error" &&
+		/temperature/i.test(message.errorMessage ?? "")
 	);
 }
 

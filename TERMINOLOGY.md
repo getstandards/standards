@@ -11,6 +11,7 @@ Canonical words used across Standards code and documentation.
 - **entry file** — The `.standards.yml` at the repository root that starts resolution.
 - **extends** — An ordered list of other configuration sources loaded before the current file's own rules.
 - **extension cycle** — A resolution failure that occurs when a source extends itself, directly or indirectly.
+- **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`.
 - **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
@@ -25,6 +26,7 @@ Canonical words used across Standards code and documentation.
 - **revision** — The Git state to load for a source: exactly one of `commit`, `tag`, or `branch`.
 - **rule** — One testable statement of required, prohibited, or recommended behavior (`id`, `level`, `description`, `rationale`, `applies_to`, `guidance`, `references`).
 - **rule set** — The collection of rules that a configuration declares, or the flattened ordered list after resolution.
+- **rule verdict** — The evaluation agent's decision for one rule and file pair: `compliant` or `violated`, with one finding per violation.
 - **schema** — The normative JSON Schema documents in `schemas/v1/`.
 - **source** — One `extends` entry: a local source (`path`) or a Git source (`repository`, `revision`, `path`).
 - **source lock** — One resolved lock file entry: `repository`, `revision`, and the resolved `commit`.

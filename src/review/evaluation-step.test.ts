@@ -41,20 +41,32 @@ afterEach(async () => {
 });
 
 describe("runEvaluation", () => {
-	it("returns the findings the agent reports and counts one invocation", async () => {
+	it("keeps findings of violated verdicts and discards compliant verdicts", async () => {
 		const faux = fauxProvider();
 		const models = createModels();
 		models.setProvider(faux.provider);
 		faux.setResponses([
 			fauxAssistantMessage([
-				fauxToolCall("report_findings", {
-					findings: [
+				fauxToolCall("report_rule_verdicts", {
+					verdicts: [
 						{
 							rule: "billing.no-float-money",
 							path: "invoice.ts",
-							lines: [1, 1],
-							evidence: "const total = subtotal * 1.2",
-							reason: "The total is a floating-point number.",
+							verdict: "violated",
+							findings: [
+								{
+									first_line: 1,
+									last_line: 1,
+									evidence: "const total = subtotal * 1.2",
+									reason: "The total is a floating-point number.",
+								},
+							],
+						},
+						{
+							rule: "billing.round-half-even",
+							path: "invoice.ts",
+							verdict: "compliant",
+							findings: [],
 						},
 					],
 				}),
@@ -96,7 +108,18 @@ describe("runEvaluation", () => {
 		models.setProvider(faux.provider);
 		faux.setResponses([
 			fauxAssistantMessage([fauxToolCall("read_file", { path: "invoice.ts" })]),
-			fauxAssistantMessage([fauxToolCall("report_findings", { findings: [] })]),
+			fauxAssistantMessage([
+				fauxToolCall("report_rule_verdicts", {
+					verdicts: [
+						{
+							rule: "billing.no-float-money",
+							path: "invoice.ts",
+							verdict: "compliant",
+							findings: [],
+						},
+					],
+				}),
+			]),
 		]);
 
 		const file: ChangedFile = {
