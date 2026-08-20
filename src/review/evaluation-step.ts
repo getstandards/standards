@@ -60,6 +60,7 @@ export interface EvaluationInput {
 	model: Model<Api>;
 	tasks: readonly EvaluationTask[];
 	headCheckoutDir: string;
+	reportVerbose?: (line: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -80,8 +81,12 @@ export async function runEvaluation(
 	input: EvaluationInput,
 ): Promise<EvaluationOutput> {
 	const results = await Promise.all(
-		input.tasks.map((task) =>
-			runReviewAgent({
+		input.tasks.map((task, index) => {
+			const paths = task.files.map((file) => file.file.path).join(", ");
+			input.reportVerbose?.(
+				`Evaluating task ${index + 1}/${input.tasks.length}: ${paths}.`,
+			);
+			return runReviewAgent({
 				models: input.models,
 				model: input.model,
 				step: "evaluation",
@@ -91,8 +96,8 @@ export async function runEvaluation(
 				parseOutput: (toolArguments) => toolArguments.findings,
 				headCheckoutDir: input.headCheckoutDir,
 				signal: input.signal,
-			}),
-		),
+			});
+		}),
 	);
 
 	let usage = emptyStepUsage();

@@ -1,4 +1,5 @@
 import { DEFAULT_PROVIDER_MODELS } from "../review/model-selection.js";
+import { renderBanner } from "./banner.js";
 
 interface CommandHelp {
 	name: string;
@@ -83,6 +84,10 @@ const REVIEW_OPTIONS: OptionHelp[] = [
 		description: "Output format: text (default) or json",
 	},
 	{
+		name: "--verbose",
+		description: "Print detailed review progress to standard error",
+	},
+	{
 		name: "--model <provider>/<model>",
 		description: "Run both agent steps on this model",
 	},
@@ -123,6 +128,7 @@ function formatHelpEntries(entries: CommandHelp[]): string[] {
 /** Render the top-level CLI help text. */
 export function renderHelp(): string {
 	return [
+		renderBanner(),
 		"Usage: standards <command>",
 		"",
 		"Commands:",

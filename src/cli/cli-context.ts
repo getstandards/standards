@@ -14,4 +14,5 @@ export interface CommandContext {
 	cacheDir?: string;
 	settings?: StandardsSettings;
 	noCache: boolean;
+	interactive: boolean;
 }

@@ -12,7 +12,11 @@ import { errorMessage } from "../../utils/errors.js";
 import { runGit } from "../../utils/git.js";
 import type { ReviewCliArgs } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";
-import { renderReviewReportText } from "./review-report-text.js";
+import {
+	renderReviewReportTerminal,
+	renderReviewReportText,
+} from "./review-report-text.js";
+import { renderVerboseLineTerminal } from "./review-verbose.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
 /** The review could not run: its diagnostic is ready to print (specs/cli.md). */
@@ -93,11 +97,19 @@ export async function runReviewCommand(
 			environment,
 			settings,
 			reportProgress: (line) => output.error(line),
+			reportVerbose: options.verbose
+				? (line) =>
+						output.error(
+							context.interactive ? renderVerboseLineTerminal(line) : line,
+						)
+				: undefined,
 		});
 		output.log(
 			options.format === "json"
 				? JSON.stringify(report, undefined, "\t")
-				: renderReviewReportText(report),
+				: context.interactive
+					? renderReviewReportTerminal(report)
+					: renderReviewReportText(report),
 		);
 		return report.conclusion === "compliant" ? 0 : 1;
 	} catch (error) {

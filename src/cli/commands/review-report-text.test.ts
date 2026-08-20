@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ModelReference } from "../../review/model-reference.js";
 import type { ReviewReport } from "../../review/review-report.js";
-import { renderReviewReportText } from "./review-report-text.js";
+import {
+	renderReviewReportTerminal,
+	renderReviewReportText,
+} from "./review-report-text.js";
 
 const model = "anthropic/claude-sonnet-5" as ModelReference;
 
@@ -80,5 +83,91 @@ Findings:
     Guidance:   Use an integer in the smallest currency unit.
     References: https://example.com/money`,
 		);
+	});
+
+	describe("renderReviewReportTerminal", () => {
+		it("marks a compliant review with a green check", () => {
+			const rendered = renderReviewReportTerminal(reportWith({}));
+
+			// chalk renders plain text when stdout is not a terminal, so the
+			// test asserts the glyph and labels, not escape codes.
+			expect(rendered).toContain("✔ Standards review: compliant");
+			expect(rendered).toContain("Evaluation model:");
+			expect(rendered).toContain("Resolved rules:");
+			expect(rendered).not.toContain("✘");
+		});
+
+		it("marks a MUST finding with a red cross", () => {
+			const rendered = renderReviewReportTerminal(
+				reportWith({
+					conclusion: "non-compliant",
+					findings: [
+						{
+							rule: "money.no-float",
+							level: "MUST NOT",
+							path: "src/invoice.ts",
+							lines: [41, 44],
+							evidence: "const total = subtotal * 1.2",
+							reason: "The total is a floating-point number.",
+							guidance: "Use an integer in the smallest currency unit.",
+							references: ["https://example.com/money"],
+						},
+					],
+				}),
+			);
+
+			expect(rendered).toContain("✘ Standards review: non-compliant");
+			expect(rendered).toContain(
+				"✘ src/invoice.ts:41-44  money.no-float (MUST NOT)",
+			);
+			expect(rendered).toContain("Evidence:");
+			expect(rendered).toContain("References:");
+		});
+
+		it("marks a SHOULD finding with a yellow warning", () => {
+			const rendered = renderReviewReportTerminal(
+				reportWith({
+					conclusion: "non-compliant",
+					findings: [
+						{
+							rule: "mixins.document-overrides",
+							level: "SHOULD NOT",
+							path: "src/prefs.ts",
+							lines: [7, 7],
+							evidence: "// no justification",
+							reason: "The change overrides a mixin without a note.",
+						},
+					],
+				}),
+			);
+
+			expect(rendered).toContain(
+				"⚠ src/prefs.ts:7  mixins.document-overrides (SHOULD NOT)",
+			);
+		});
+	});
+
+	describe("renderReviewReportText", () => {
+		it("stays free of decorative glyphs", () => {
+			const rendered = renderReviewReportText(
+				reportWith({
+					conclusion: "non-compliant",
+					findings: [
+						{
+							rule: "money.no-float",
+							level: "MUST NOT",
+							path: "src/invoice.ts",
+							lines: [41, 44],
+							evidence: "const total = subtotal * 1.2",
+							reason: "The total is a floating-point number.",
+						},
+					],
+				}),
+			);
+
+			expect(rendered).not.toContain("✔");
+			expect(rendered).not.toContain("✘");
+			expect(rendered).not.toContain("⚠");
+		});
 	});
 });

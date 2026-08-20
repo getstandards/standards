@@ -43,6 +43,8 @@ export interface RunReviewInput {
 	settings?: StandardsSettings;
 	/** Receives the selected file and task counts before the evaluation step. */
 	reportProgress?: (line: string) => void;
+	/** Receives detailed progress for the `--verbose` option (specs/cli.md). */
+	reportVerbose?: (line: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -80,7 +82,23 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		});
 	}
 	const changedFiles = filterChangedFilesByTargets(allChangedFiles, targets);
+	const reportVerbose = input.reportVerbose;
+	if (reportVerbose !== undefined) {
+		reportVerbose(`Base revision: ${input.baseRevision}`);
+		reportVerbose(`Head revision: ${input.headRevision}`);
+		if (targets.length > 0) {
+			reportVerbose(`Targets: ${targets.join(", ")}`);
+		}
+	}
 	const selections = selectRules(input.ruleSet, changedFiles);
+	if (reportVerbose !== undefined) {
+		for (const selection of selections) {
+			const ruleIds = selection.rules.map((rule) => rule.id).join(", ");
+			reportVerbose(
+				`Selected ${selection.file.path} (${selection.file.status}): ${ruleIds}`,
+			);
+		}
+	}
 
 	const selectedRuleIds = new Set(
 		selections.flatMap((selection) => selection.rules.map((rule) => rule.id)),
@@ -104,6 +122,20 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 	}
 
 	const tasks = planEvaluationTasks(selections);
+	if (reportVerbose !== undefined) {
+		tasks.forEach((task, index) => {
+			const ruleIds = [
+				...new Set(
+					task.files.flatMap((file) => file.rules.map((rule) => rule.id)),
+				),
+			];
+			reportVerbose(
+				`Evaluation task ${index + 1}/${tasks.length}: ${task.files
+					.map((file) => file.file.path)
+					.join(", ")} (rules: ${ruleIds.join(", ")})`,
+			);
+		});
+	}
 	input.reportProgress?.(
 		`Evaluating ${selections.length} selected file${
 			selections.length === 1 ? "" : "s"
@@ -123,6 +155,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		model: evaluationModel,
 		tasks,
 		headCheckoutDir: input.workingDirectory,
+		reportVerbose: input.reportVerbose,
 		signal: input.signal,
 	});
 	const verification = await runVerification({
@@ -131,6 +164,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		findings: evaluation.findings,
 		ruleSet: input.ruleSet,
 		headCheckoutDir: input.workingDirectory,
+		reportVerbose: input.reportVerbose,
 		signal: input.signal,
 	});
 

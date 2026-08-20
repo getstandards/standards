@@ -16,6 +16,7 @@ import { runLogoutCommand } from "./commands/logout.js";
 import { runReviewCommand } from "./commands/review.js";
 import { runSchemaCommand } from "./commands/schema.js";
 import { runValidateCommand } from "./commands/validate.js";
+import { VERSION } from "./version.js";
 
 /** Run the Standards CLI and return its process exit status. */
 export async function runCli(
@@ -43,7 +44,12 @@ export async function runCli(
 		cacheDir,
 		noCache,
 		help,
+		version,
 	} = parsedArguments;
+	if (version) {
+		output.log(VERSION);
+		return 0;
+	}
 	if (command === undefined) {
 		output.log(renderHelp());
 		return 0;
@@ -86,11 +92,12 @@ export async function runCli(
 		cacheDir,
 		settings,
 		noCache,
+		interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
 	};
 
 	switch (command) {
 		case "init":
-			return runInitCommand();
+			return runInitCommand(context);
 		case "validate":
 			return runValidateCommand(context);
 		case "lock":
@@ -98,7 +105,7 @@ export async function runCli(
 		case "review":
 			return runReviewCommand(
 				context,
-				review ?? { targets: [], all: false, format: "text" },
+				review ?? { targets: [], all: false, format: "text", verbose: false },
 			);
 		case "cache":
 			return runCacheCommand(context, cacheSubcommand);

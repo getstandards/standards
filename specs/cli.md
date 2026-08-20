@@ -16,7 +16,7 @@ The executable name is `standards`. It provides these commands:
 
 | Command | Purpose | Current behavior |
 | --- | --- | --- |
-| `standards init` | Create an initial Standards configuration. | Planned. Currently no operation. |
+| `standards init` | Create an initial Standards configuration. | Implemented. |
 | `standards validate` | Validate the configuration and resolve its complete rule set. | Implemented. |
 | `standards lock` | Resolve mutable Git sources and update the lock file. | Implemented. `--check` is planned. |
 | `standards rules` | List the resolved rule set with each rule's origin. | Planned. |
@@ -27,16 +27,18 @@ The executable name is `standards`. It provides these commands:
 | `standards login <provider>` | Store a credential for a model provider. | Planned. |
 | `standards logout <provider>` | Remove the stored credential for a model provider. | Planned. |
 
-`init` reserves its command name: until it is implemented, it MUST exit with
-status `0` without output or other effects.
+`init` reserves its command name.
 
 ## General behavior
 
 Running `standards` without a command or with `--help` or `-h` MUST print help
-to standard output and exit with status `0`. Root help MUST list `cache` as a
-single command. It MUST NOT list the `cache` subcommands; `standards cache
---help` prints them. Running `standards --version` MUST print the application
-version to standard output and exit with status `0`.
+to standard output and exit with status `0`. Root help MUST open with a banner
+that shows the Standards logo and the application version. It MUST list
+`cache` as a single command. It MUST NOT list the `cache` subcommands;
+`standards cache --help` prints them. Running `standards --version` MUST print
+the application version to standard output and exit with status `0`. The
+banner and the version are the only output that carries the logo; every other
+command writes plain text, so machine-readable output stays clean.
 
 An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
@@ -102,6 +104,7 @@ These options control command input and output:
 | `--base <revision>` | Review the change since `<revision>` instead of the default base. | `review` |
 | `--all` | Run a full review: review every tracked file of the head revision. | `review` |
 | `--format <format>` | Output format: `text` (default) or `json`. | `review`, `rules` |
+| `--verbose` | Print detailed review progress to standard error. | `review` |
 
 With `--format json`, the command MUST write exactly one JSON document to
 standard output and nothing else. Progress and diagnostics stay on standard
@@ -118,8 +121,15 @@ summary that a command writes to standard output.
 
 The command MUST create `.standards.yml` in the current working directory.
 The created file MUST be a valid version 1 configuration with an empty rule
-set, and SHOULD contain commented examples for `extends` and one rule. On
-success, the command MUST report the created path and exit with status `0`.
+set, and SHOULD contain commented examples for `extends` and one rule.
+
+On an interactive terminal, the command MAY prompt the user and write one
+rule from those prompts. When it adds a rule, the file keeps the commented
+examples and adds the rule to the `rules` list. Without an interactive
+terminal, the command MUST write the default file without prompting.
+
+On success, the command MUST report the created path — and the rule's `id`
+when the user added one — and exit with status `0`.
 
 When `.standards.yml` already exists, the command MUST print a diagnostic and
 exit with status `1`. It MUST NOT modify the existing file. The command MUST
@@ -282,10 +292,42 @@ The command MUST write the report to standard output: the text rendering by
 default, or the machine-readable report with `--format json`, as defined in
 [Standards review](./review.md). Progress MUST go to standard error.
 
+On an interactive terminal, the text report uses a small semantic color and
+glyph vocabulary: a green check for a compliant review, a red cross for a
+non-compliant one, red marks for `MUST` findings, yellow warnings for `SHOULD`
+findings, dim labels, and cyan counts. The terminal rendering shows the same
+information as the plain text report and changes neither the report data nor
+the conclusion. When standard output is not a terminal, or the report is
+captured, the command writes the plain text rendering without color codes or
+glyphs, so redirects and automation stay clean.
+
 As a checking command, `review` MUST use the three exit statuses: `0` for a
 compliant conclusion, `1` for a non-compliant conclusion, and `2` when the
 review could not run or complete. A conclusion MUST NOT be reported from an
 incomplete review.
+
+### `review --verbose`
+
+`standards review --verbose` prints detailed progress to standard error while
+the review runs. The option is disabled by default. Without it, the review
+prints only the report and the progress that this specification requires.
+
+The verbose output MUST include the items that the review reaches:
+
+- The base revision, the head revision, and the targets.
+- The changed files that the targets select, and the rules that selection
+  assigns to each file.
+- The evaluation tasks that planning packs, and the rules in each task.
+- The progress of each evaluation and verification invocation.
+- The findings that deduplication or verification discards.
+
+Verbose output MUST NOT change the report, the conclusion, or the exit
+status. It MUST go to standard error. With `--format json`, standard output
+remains exactly one JSON document.
+
+On an interactive terminal, each verbose line MAY carry color and a leading
+pointer glyph, with the same color vocabulary as the terminal report. Without
+an interactive terminal, each verbose line MUST stay plain text.
 
 ## `test`
 
@@ -350,7 +392,9 @@ exit with status `0`. It MUST NOT print the stored secret.
 
 Running `standards login` without a provider, or with an unknown provider,
 MUST print a diagnostic that lists the known providers to standard error and
-exit with status `1`.
+exit with status `1`. On an interactive terminal, `standards login` without a
+provider MAY instead prompt the user to choose from the known providers and
+continue with that choice.
 
 ## `logout`
 

@@ -2,10 +2,13 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { configurationSchema } from "../config/configuration-schema.js";
 import { loadLockfile } from "../lockfile/lockfile-loader.js";
 import { runGit } from "../utils/git.js";
+import { parseSingleYamlDocument } from "../utils/yaml.js";
 import type { CliOutput } from "./cli-context.js";
 import { runCli } from "./cli-runner.js";
+import { VERSION } from "./version.js";
 
 const temporaryDirectories: string[] = [];
 let previousXdgConfigHome: string | undefined;
@@ -162,14 +165,55 @@ Next action:
 		expect(stderr[0]).toContain("Set 'version' to 1 in '.standards.lock'");
 	});
 
-	it("runs the reserved init command without effects", async () => {
+	it("creates an empty Standards configuration with init", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "standards-init-"));
+		temporaryDirectories.push(directory);
 		const { output, stdout, stderr } = captureOutput();
 
-		const exitStatus = await runCli(["init"], "/unused", output);
+		const exitStatus = await runCli(["init"], directory, output);
 
 		expect(exitStatus).toBe(0);
-		expect(stdout).toEqual([]);
+		expect(stdout[0]).toContain("Created .standards.yml");
 		expect(stderr).toEqual([]);
+		const content = await readFile(
+			path.join(directory, ".standards.yml"),
+			"utf8",
+		);
+		expect(
+			configurationSchema.safeParse(parseSingleYamlDocument(content)).success,
+		).toBe(true);
+	});
+
+	it("fails init when the entry file already exists", async () => {
+		const repositoryRoot = await createRepository("version: 1\n");
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["init"], repositoryRoot, output);
+
+		expect(exitStatus).toBe(1);
+		expect(stdout).toEqual([]);
+		expect(stderr[0]).toContain("already exists");
+	});
+
+	it("prints the application version with --version", async () => {
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["--version"], "/unused", output);
+
+		expect(exitStatus).toBe(0);
+		expect(stdout[0]).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(stderr).toEqual([]);
+	});
+
+	it("rejects --version on a command", async () => {
+		const { output, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["review", "--version"], "/unused", output);
+
+		expect(exitStatus).toBe(2);
+		expect(stderr[0]).toContain(
+			"Command 'review' does not accept the '--version' option.",
+		);
 	});
 
 	it("updates the lock file", async () => {
@@ -246,6 +290,8 @@ Next action:
 
 		expect(exitStatus).toBe(0);
 		expect(stdout[0]).toContain("Usage: standards <command>");
+		expect(stdout[0]).toContain(`Standards ${VERSION}`);
+		expect(stdout[0]).toContain("█");
 		expect(stderr).toEqual([]);
 	});
 
@@ -504,6 +550,26 @@ rules:
 			);
 		});
 
+		it("prints detailed progress to standard error with --verbose", async () => {
+			const { repositoryRoot, baseRevision } = await createReviewRepository();
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await withModelEnvironment(() =>
+				runCli(
+					["review", "--base", baseRevision, "--verbose"],
+					repositoryRoot,
+					output,
+				),
+			);
+
+			expect(exitStatus).toBe(0);
+			expect(stdout[0]).toContain("Standards review: compliant");
+			expect(
+				stderr.some((line) => line.includes(`Base revision: ${baseRevision}`)),
+			).toBe(true);
+			expect(stderr.some((line) => line.includes("Head revision:"))).toBe(true);
+		});
+
 		it("rejects an unknown review format", async () => {
 			const { output, stderr } = captureOutput();
 
@@ -528,6 +594,18 @@ rules:
 			expect(stderr[0]).toContain(
 				"Command 'validate' does not accept the '--all' option.",
 			);
+
+			const verboseOutput = captureOutput();
+			const verboseStatus = await runCli(
+				["validate", "--verbose"],
+				"/unused",
+				verboseOutput.output,
+			);
+
+			expect(verboseStatus).toBe(1);
+			expect(verboseOutput.stderr[0]).toContain(
+				"Command 'validate' does not accept the '--verbose' option.",
+			);
 		});
 
 		it("prints review help with the default models", async () => {
@@ -538,6 +616,7 @@ rules:
 			expect(exitStatus).toBe(0);
 			expect(stderr).toEqual([]);
 			expect(stdout[0]).toContain("Usage: standards review");
+			expect(stdout[0]).toContain("--verbose");
 			expect(stdout[0]).toContain("--verification-model");
 			expect(stdout[0]).toContain("Default models:");
 			expect(stdout[0]).toContain("claude-sonnet-5");

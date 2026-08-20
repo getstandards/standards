@@ -47,6 +47,7 @@ export interface ReviewCliArgs {
 	model?: string;
 	evaluationModel?: string;
 	verificationModel?: string;
+	verbose: boolean;
 }
 
 /** Validated Standards CLI arguments. */
@@ -59,6 +60,7 @@ export interface ParsedCliArgs {
 	cacheDir?: string;
 	noCache: boolean;
 	help: boolean;
+	version?: boolean;
 }
 
 /** An invalid CLI command, argument, or option. */
@@ -86,10 +88,12 @@ function parseRawCliArguments(arguments_: readonly string[]) {
 			args: arguments_,
 			options: {
 				help: { type: "boolean", short: "h", default: false },
+				version: { type: "boolean", default: false },
 				"cache-dir": { type: "string" },
 				"no-cache": { type: "boolean", default: false },
 				base: { type: "string" },
 				all: { type: "boolean", default: false },
+				verbose: { type: "boolean", default: false },
 				format: { type: "string" },
 				model: { type: "string" },
 				"evaluation-model": { type: "string" },
@@ -112,9 +116,20 @@ export function parseCliArgs(
 ): ParsedCliArgs {
 	const parsed = parseRawCliArguments(arguments_);
 	const help = Boolean(parsed.values.help);
+	const version = Boolean(parsed.values.version);
 	const noCache = Boolean(parsed.values["no-cache"]);
 	const cacheDir = parsed.values["cache-dir"];
 	const [command, ...commandArguments] = parsed.positionals;
+
+	if (version) {
+		if (command !== undefined) {
+			throw new CliArgumentError(
+				`Command '${command}' does not accept the '--version' option.`,
+				argumentErrorStatus(arguments_),
+			);
+		}
+		return { help: false, noCache, cacheDir, version: true };
+	}
 
 	if (command === undefined) {
 		return { help, noCache, cacheDir };
@@ -128,6 +143,7 @@ export function parseCliArgs(
 	const reviewValues: ReviewOptionValues = {
 		base: parsed.values.base,
 		all: Boolean(parsed.values.all),
+		verbose: Boolean(parsed.values.verbose),
 		format: parsed.values.format,
 		model: parsed.values.model,
 		evaluationModel: parsed.values["evaluation-model"],
@@ -199,6 +215,7 @@ export function parseCliArgs(
 interface ReviewOptionValues {
 	base?: string;
 	all: boolean;
+	verbose: boolean;
 	format?: string;
 	model?: string;
 	evaluationModel?: string;
@@ -213,6 +230,7 @@ function rejectReviewOnlyOptions(
 	const givenOptions: [string, boolean][] = [
 		["--base", values.base !== undefined],
 		["--all", values.all],
+		["--verbose", values.verbose],
 		["--format", values.format !== undefined],
 		["--model", values.model !== undefined],
 		["--evaluation-model", values.evaluationModel !== undefined],
@@ -256,6 +274,7 @@ function parseReviewCommand(
 			model: values.model,
 			evaluationModel: values.evaluationModel,
 			verificationModel: values.verificationModel,
+			verbose: values.verbose,
 		},
 		cacheDir,
 		noCache,

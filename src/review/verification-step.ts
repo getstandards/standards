@@ -49,6 +49,7 @@ export interface VerificationInput {
 	findings: readonly Finding[];
 	ruleSet: readonly Rule[];
 	headCheckoutDir: string;
+	reportVerbose?: (line: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -68,9 +69,18 @@ export interface VerificationOutput {
 export async function runVerification(
 	input: VerificationInput,
 ): Promise<VerificationOutput> {
+	const reportVerbose = input.reportVerbose;
 	const rulesById = new Map(input.ruleSet.map((rule) => [rule.id, rule]));
+	const deduped = new Set(dedupeFindings(input.findings));
+	if (reportVerbose !== undefined) {
+		for (const finding of input.findings) {
+			if (!deduped.has(finding)) {
+				reportVerbose(`Discarded duplicate finding: ${findingLabel(finding)}.`);
+			}
+		}
+	}
 	const candidates: Array<{ finding: Finding; rule: Rule }> = [];
-	for (const finding of dedupeFindings(input.findings)) {
+	for (const finding of deduped) {
 		const rule = rulesById.get(finding.rule);
 		if (rule !== undefined) {
 			candidates.push({ finding, rule });
@@ -78,7 +88,10 @@ export async function runVerification(
 	}
 
 	const results = await Promise.all(
-		candidates.map(async ({ finding, rule }) => {
+		candidates.map(async ({ finding, rule }, index) => {
+			reportVerbose?.(
+				`Verifying finding ${index + 1}/${candidates.length}: ${findingLabel(finding)}.`,
+			);
 			const result = await runReviewAgent({
 				models: input.models,
 				model: input.model,
@@ -104,9 +117,16 @@ export async function runVerification(
 		usage = addInvocationUsage(usage, result.tokens);
 		if (result.confirmed) {
 			findings.push(result.finding);
+		} else {
+			reportVerbose?.(`Rejected finding: ${findingLabel(result.finding)}.`);
 		}
 	}
 	return { findings, usage };
+}
+
+/** Render one finding as `rule at path:first-last` for verbose progress lines. */
+function findingLabel(finding: Finding): string {
+	return `${finding.rule} at ${finding.path}:${finding.lines[0]}-${finding.lines[1]}`;
 }
 
 /**

@@ -1,7 +1,8 @@
 import { z } from "zod/v4";
 
 const COMMIT_OBJECT_ID_PATTERN = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
-const RULE_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+/** The stable lowercase rule identifier format (specs/configuration.md). */
+export const RULE_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 const FORBIDDEN_GIT_REFERENCE_CHARACTERS = "~^:?*[\\";
 

@@ -161,6 +161,75 @@ describe("runReview", () => {
 		]);
 	});
 
+	it("reports detailed progress with reportVerbose", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(
+			path.join(directory, "invoice.ts"),
+			"const total = subtotal * 1.2;\n",
+		);
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		// Evaluation returns two duplicate findings; verification rejects the
+		// one that survives deduplication, so the review reports no finding.
+		const respond: FauxResponseFactory = (context) => {
+			if ((context.systemPrompt ?? "").includes("report_findings")) {
+				return fauxAssistantMessage([
+					fauxToolCall("report_findings", {
+						findings: [
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								lines: [1, 1],
+								evidence: "const total = subtotal * 1.2",
+								reason: "The total is a floating-point number.",
+							},
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								lines: [1, 2],
+								evidence: "const total = subtotal * 1.2",
+								reason: "The total is a floating-point number.",
+							},
+						],
+					}),
+				]);
+			}
+			return fauxAssistantMessage([
+				fauxToolCall("report_verdict", { confirmed: false }),
+			]);
+		};
+		faux.setResponses([respond, respond]);
+		const verboseLines: string[] = [];
+
+		const report = await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			targets: ["invoice.ts"],
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+			reportVerbose: (line) => verboseLines.push(line),
+		});
+
+		expect(report.conclusion).toBe("compliant");
+		expect(report.findings).toEqual([]);
+		expect(verboseLines).toEqual([
+			`Base revision: ${base}`,
+			`Head revision: ${head}`,
+			"Targets: invoice.ts",
+			"Selected invoice.ts (modified): money.no-float",
+			"Evaluation task 1/1: invoice.ts (rules: money.no-float)",
+			"Evaluating task 1/1: invoice.ts.",
+			"Discarded duplicate finding: money.no-float at invoice.ts:1-2.",
+			"Verifying finding 1/1: money.no-float at invoice.ts:1-1.",
+			"Rejected finding: money.no-float at invoice.ts:1-1.",
+		]);
+	});
+
 	it("rejects a target that does not exist in the head revision", async () => {
 		const directory = await initRepository();
 		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
