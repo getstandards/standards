@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/standards-wordmark-dark.gif">
     <source media="(prefers-color-scheme: light)" srcset="assets/standards-wordmark-light.gif">
-    <img alt="Standards" src="assets/standards-wordmark-light.gif">
+    <img alt="Standards" width="300" src="assets/standards-wordmark-light.gif">
   </picture>
 </p>
 
