@@ -6,6 +6,7 @@ import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
 import { ModelSelectionError } from "../../review/model-selection.js";
 import { ReviewProviderError } from "../../review/review-agent.js";
+import type { ReviewReport } from "../../review/review-report.js";
 import { ReviewTargetError } from "../../review/review-target.js";
 import { runReview } from "../../review/run-review.js";
 import { errorMessage } from "../../utils/errors.js";
@@ -16,6 +17,7 @@ import {
 	renderReviewReportTerminal,
 	renderReviewReportText,
 } from "./review-report-text.js";
+import { createReviewSpinner, formatStepProgress } from "./review-spinner.js";
 import { renderVerboseLineTerminal } from "./review-verbose.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
@@ -81,8 +83,24 @@ export async function runReviewCommand(
 		authFilePath: resolveAuthFilePath({ environment }),
 	});
 
+	// On an interactive terminal, a spinner on standard error shows that the
+	// review is working while the evaluation and verification steps run. The
+	// progress and verbose lines print above it.
+	const spinner =
+		context.interactive && process.stderr.isTTY
+			? createReviewSpinner(process.stderr)
+			: undefined;
+	const printProgress = (line: string) => {
+		if (spinner === undefined) {
+			output.error(line);
+		} else {
+			spinner.printLine(line);
+		}
+	};
+
+	let report: ReviewReport;
 	try {
-		const report = await runReview({
+		report = await runReview({
 			baseRevision,
 			headRevision,
 			workingDirectory,
@@ -96,26 +114,33 @@ export async function runReviewCommand(
 			},
 			environment,
 			settings,
-			reportProgress: (line) => output.error(line),
+			reportProgress: printProgress,
+			reportStepProgress:
+				spinner === undefined
+					? undefined
+					: (progress) => spinner.update(formatStepProgress(progress)),
 			reportVerbose: options.verbose
 				? (line) =>
-						output.error(
+						printProgress(
 							context.interactive ? renderVerboseLineTerminal(line) : line,
 						)
 				: undefined,
 		});
-		output.log(
-			options.format === "json"
-				? JSON.stringify(report, undefined, "\t")
-				: context.interactive
-					? renderReviewReportTerminal(report)
-					: renderReviewReportText(report),
-		);
-		return report.conclusion === "compliant" ? 0 : 1;
 	} catch (error) {
+		// Erase the spinner line before the diagnostic prints.
+		spinner?.stop();
 		output.error(formatReviewFailure(error));
 		return 2;
 	}
+	spinner?.stop();
+	output.log(
+		options.format === "json"
+			? JSON.stringify(report, undefined, "\t")
+			: context.interactive
+				? renderReviewReportTerminal(report)
+				: renderReviewReportText(report),
+	);
+	return report.conclusion === "compliant" ? 0 : 1;
 }
 
 /** The resolved base and head commits of one review (specs/cli.md review). */

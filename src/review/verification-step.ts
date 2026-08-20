@@ -8,6 +8,7 @@ import {
 import type { Finding } from "./finding.js";
 import { readHeadRegion } from "./read-head-file.js";
 import { runReviewAgent } from "./review-agent.js";
+import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
 
 /** Lines of head-revision code kept on each side of a finding for the verifier. */
 const CODE_REGION_PADDING = 3;
@@ -50,6 +51,8 @@ export interface VerificationInput {
 	ruleSet: readonly Rule[];
 	headCheckoutDir: string;
 	reportVerbose?: (line: string) => void;
+	/** Receives the count of finished findings, for a live progress display. */
+	reportStepProgress?: (progress: ReviewStepProgress) => void;
 	signal?: AbortSignal;
 }
 
@@ -87,6 +90,11 @@ export async function runVerification(
 		}
 	}
 
+	const reportFindingFinished = startStepProgress(
+		"verification",
+		candidates.length,
+		input.reportStepProgress,
+	);
 	const results = await Promise.all(
 		candidates.map(async ({ finding, rule }, index) => {
 			reportVerbose?.(
@@ -107,6 +115,7 @@ export async function runVerification(
 				headCheckoutDir: input.headCheckoutDir,
 				signal: input.signal,
 			});
+			reportFindingFinished();
 			return { finding, confirmed: result.output, tokens: result.tokens };
 		}),
 	);

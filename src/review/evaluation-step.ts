@@ -16,6 +16,7 @@ import type { EvaluationTask } from "./evaluation-plan.js";
 import type { Finding } from "./finding.js";
 import { runReviewAgent } from "./review-agent.js";
 import type { FileSelection } from "./rule-selection.js";
+import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
 
 /** The tool an evaluation agent calls to return one verdict per rule and file. */
 const reportRuleVerdictsTool = {
@@ -84,6 +85,8 @@ export interface EvaluationInput {
 	tasks: readonly EvaluationTask[];
 	headCheckoutDir: string;
 	reportVerbose?: (line: string) => void;
+	/** Receives the count of finished tasks, for a live progress display. */
+	reportStepProgress?: (progress: ReviewStepProgress) => void;
 	signal?: AbortSignal;
 }
 
@@ -103,13 +106,20 @@ export interface EvaluationOutput {
 export async function runEvaluation(
 	input: EvaluationInput,
 ): Promise<EvaluationOutput> {
+	const reportTaskFinished = startStepProgress(
+		"evaluation",
+		input.tasks.length,
+		input.reportStepProgress,
+	);
+
 	const results = await Promise.all(
-		input.tasks.map((task, index) => {
+		input.tasks.map(async (task, index) => {
 			const paths = task.files.map((file) => file.file.path).join(", ");
 			input.reportVerbose?.(
 				`Evaluating task ${index + 1}/${input.tasks.length}: ${paths}.`,
 			);
-			return runReviewAgent({
+
+			const result = await runReviewAgent({
 				models: input.models,
 				model: input.model,
 				step: "evaluation",
@@ -120,6 +130,9 @@ export async function runEvaluation(
 				headCheckoutDir: input.headCheckoutDir,
 				signal: input.signal,
 			});
+
+			reportTaskFinished();
+			return result;
 		}),
 	);
 

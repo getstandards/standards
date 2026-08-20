@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Rule } from "../config/index.js";
 import { runGit } from "../utils/git.js";
 import { runReview } from "./run-review.js";
+import type { ReviewStepProgress } from "./step-progress.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -247,6 +248,104 @@ describe("runReview", () => {
 			"Discarded duplicate finding: money.no-float at invoice.ts:1-2.",
 			"Verifying finding 1/1: money.no-float at invoice.ts:1-1.",
 			"Rejected finding: money.no-float at invoice.ts:1-1.",
+		]);
+	});
+
+	it("reports the live count of finished invocations per agent step", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(
+			path.join(directory, "invoice.ts"),
+			"const total = subtotal * 1.2;\n",
+		);
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		const respond: FauxResponseFactory = (context) => {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
+				return fauxAssistantMessage([
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								verdict: "violated",
+								findings: [
+									{
+										first_line: 1,
+										last_line: 1,
+										evidence: "const total = subtotal * 1.2",
+										reason: "The total is a floating-point number.",
+									},
+								],
+							},
+						],
+					}),
+				]);
+			}
+			return fauxAssistantMessage([
+				fauxToolCall("report_verdict", { confirmed: true }),
+			]);
+		};
+		faux.setResponses([respond, respond]);
+		const stepProgress: ReviewStepProgress[] = [];
+
+		await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+			reportStepProgress: (progress) => stepProgress.push(progress),
+		});
+
+		expect(stepProgress).toEqual([
+			{ step: "evaluation", completed: 0, total: 1 },
+			{ step: "evaluation", completed: 1, total: 1 },
+			{ step: "verification", completed: 0, total: 1 },
+			{ step: "verification", completed: 1, total: 1 },
+		]);
+	});
+
+	it("reports no verification progress when evaluation finds nothing", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 2;\n");
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		faux.setResponses([
+			fauxAssistantMessage([
+				fauxToolCall("report_rule_verdicts", {
+					verdicts: [
+						{
+							rule: "money.no-float",
+							path: "invoice.ts",
+							verdict: "compliant",
+							findings: [],
+						},
+					],
+				}),
+			]),
+		]);
+		const stepProgress: ReviewStepProgress[] = [];
+
+		await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+			reportStepProgress: (progress) => stepProgress.push(progress),
+		});
+
+		expect(stepProgress).toEqual([
+			{ step: "evaluation", completed: 0, total: 1 },
+			{ step: "evaluation", completed: 1, total: 1 },
 		]);
 	});
 

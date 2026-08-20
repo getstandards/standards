@@ -21,6 +21,7 @@ import {
 	validateTargets,
 } from "./review-target.js";
 import { selectRules } from "./rule-selection.js";
+import type { ReviewStepProgress } from "./step-progress.js";
 import { runVerification } from "./verification-step.js";
 
 /** Everything one review needs to run end to end (specs/review.md). */
@@ -43,6 +44,8 @@ export interface RunReviewInput {
 	settings?: StandardsSettings;
 	/** Receives the selected file and task counts before the evaluation step. */
 	reportProgress?: (line: string) => void;
+	/** Receives the live invocation counts of each agent step it runs. */
+	reportStepProgress?: (progress: ReviewStepProgress) => void;
 	/** Receives detailed progress for the `--verbose` option (specs/cli.md). */
 	reportVerbose?: (line: string) => void;
 	signal?: AbortSignal;
@@ -156,8 +159,10 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		tasks,
 		headCheckoutDir: input.workingDirectory,
 		reportVerbose: input.reportVerbose,
+		reportStepProgress: input.reportStepProgress,
 		signal: input.signal,
 	});
+
 	const verification = await runVerification({
 		models: input.models,
 		model: verificationModel,
@@ -165,6 +170,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		ruleSet: input.ruleSet,
 		headCheckoutDir: input.workingDirectory,
 		reportVerbose: input.reportVerbose,
+		reportStepProgress: input.reportStepProgress,
 		signal: input.signal,
 	});
 

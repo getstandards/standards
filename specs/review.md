@@ -256,7 +256,9 @@ auditable.
 ### Step 3: Evaluation
 
 Each evaluation task runs as one agent invocation. Tasks are independent and
-MAY run concurrently.
+MAY run concurrently. The implementation MAY report the count of finished
+tasks while the step runs, so an interactive surface can show a loading
+status.
 
 The agent receives:
 
@@ -313,7 +315,9 @@ tokens on nothing.
 Each remaining finding runs as one independent agent invocation with fresh
 context: the rule fields from evaluation, the finding, and the code region
 around `lines`. The verifier does not receive the evaluation task's other
-rules, files, or findings.
+rules, files, or findings. The implementation MAY report the count of
+finished findings while the step runs, so an interactive surface can show a
+loading status.
 
 The verifier confirms or rejects the finding:
 

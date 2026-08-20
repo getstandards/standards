@@ -301,6 +301,13 @@ the conclusion. When standard output is not a terminal, or the report is
 captured, the command writes the plain text rendering without color codes or
 glyphs, so redirects and automation stay clean.
 
+On an interactive terminal, the command also shows a loading status on
+standard error while the evaluation and verification steps run: a spinner
+with the count of finished invocations of the running step. The status tells
+the user that the review is working. The command erases the status line
+before it writes the report or a diagnostic. Without an interactive terminal,
+no loading status appears and progress stays plain text lines.
+
 As a checking command, `review` MUST use the three exit statuses: `0` for a
 compliant conclusion, `1` for a non-compliant conclusion, and `2` when the
 review could not run or complete. A conclusion MUST NOT be reported from an
