@@ -180,6 +180,8 @@ describe("runAction", () => {
 			{ id: 202, html_url: "https://github.com/acme/shop/runs/202" },
 			{},
 			[],
+			{},
+			[],
 			{ id: 9, html_url: "https://github.com/acme/shop/pull/42#comment-9" },
 		]);
 
@@ -188,7 +190,9 @@ describe("runAction", () => {
 			createModels: fauxCreateModels(),
 		});
 
-		expect(exitStatus).toBe(1);
+		// A completed review exits 0 whatever the conclusion: the check run
+		// carries the verdict (specs/github.md run behavior).
+		expect(exitStatus).toBe(0);
 		expect(
 			requests.map((request) => [
 				request.method,
@@ -197,6 +201,8 @@ describe("runAction", () => {
 		).toEqual([
 			["POST", "/repos/acme/shop/check-runs"],
 			["PATCH", "/repos/acme/shop/check-runs/202"],
+			["GET", "/repos/acme/shop/pulls/42/comments"],
+			["POST", "/repos/acme/shop/pulls/42/reviews"],
 			["GET", "/repos/acme/shop/issues/42/comments"],
 			["POST", "/repos/acme/shop/issues/42/comments"],
 		]);
@@ -204,18 +210,25 @@ describe("runAction", () => {
 		expect(completion.conclusion).toBe("failure");
 		expect(completion.output.title).toBe("Non-compliant");
 		expect(completion.output.summary).toContain("money.no-float");
-		expect(completion.output.annotations).toEqual([
-			{
-				path: "invoice.ts",
-				start_line: 1,
-				end_line: 1,
-				annotation_level: "failure",
-				title: "money.no-float — MUST NOT",
-				message:
-					"The total is a floating-point number.\n\nHow to fix: Use an integer of cents.",
-			},
-		]);
-		const comment = await requestBody(requests, 3);
+		const review = await requestBody(requests, 3);
+		expect(review.event).toBe("COMMENT");
+		expect(review.commit_id).toBe(repository.headSha);
+		expect(review.comments).toHaveLength(1);
+		expect(review.comments[0]).toMatchObject({
+			path: "invoice.ts",
+			line: 1,
+			side: "RIGHT",
+		});
+		expect(review.comments[0].body).toMatch(
+			/^<!-- standards:finding:v1:[0-9a-f]{16} -->\n/,
+		);
+		expect(review.comments[0].body).toContain(
+			"🛑 **The total is a floating-point number.**",
+		);
+		expect(review.comments[0].body).toContain(
+			"<sub>MUST NOT · `money.no-float` · Standards review</sub>",
+		);
+		const comment = await requestBody(requests, 5);
 		expect(comment.body.startsWith(REPORT_COMMENT_MARKER)).toBe(true);
 		expect(comment.body).toContain(`blob/${repository.headSha}/invoice.ts#L1`);
 

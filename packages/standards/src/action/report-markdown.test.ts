@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { modelReferenceSchema } from "../review/model-reference.js";
 import type { ReviewReport } from "../review/review-report.js";
 import {
+	FINDING_MARKER_PATTERN,
+	findingFingerprint,
 	REPORT_COMMENT_MARKER,
 	renderCheckRunSummary,
 	renderFailureComment,
+	renderFindingComment,
 	renderSummaryComment,
 } from "./report-markdown.js";
 
@@ -78,7 +81,7 @@ function exampleReport(): ReviewReport {
 }
 
 describe("renderSummaryComment", () => {
-	it("renders the full layout in order for the example report", () => {
+	it("renders the index layout in order for the example report", () => {
 		const comment = renderSummaryComment(exampleReport(), context);
 		const lines = comment.split("\n");
 		expect(lines[0]).toBe(REPORT_COMMENT_MARKER);
@@ -86,11 +89,12 @@ describe("renderSummaryComment", () => {
 		expect(comment).toContain("> [!CAUTION]");
 		expect(comment).toContain("**2 blocking findings**");
 		expect(comment).toContain("1 warning and 1 suppressed finding are");
+		expect(comment).toContain(
+			"Each confirmed finding has a review comment on its lines.",
+		);
 		// Sections appear in the specified order.
 		const order = [
 			"| # | Rule | Level | Location |",
-			"### 🛑 Blocking findings",
-			"### ⚠️ Warnings",
 			"### 🔇 Suppressed",
 			"invalid suppression marker",
 			"<b>Review details</b>",
@@ -101,33 +105,39 @@ describe("renderSummaryComment", () => {
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
 	});
 
-	it("numbers blocking findings first and links the head commit blob", () => {
+	it("indexes the findings without repeating their detail", () => {
 		const comment = renderSummaryComment(exampleReport(), context);
+		// Blocking findings come first in the overview numbering.
 		expect(comment).toContain(
-			"#### 1. `payments.no-floating-point-money` — MUST NOT",
+			"| 1 | `payments.no-floating-point-money` | 🛑 MUST NOT |",
 		);
 		expect(comment).toContain(
-			"#### 2. `security.no-secrets-in-code` — MUST NOT",
-		);
-		expect(comment).toContain(
-			"<summary><b>3.</b> <code>api.problem-details-errors</code> — SHOULD",
+			"| 3 | `api.problem-details-errors` | ⚠️ SHOULD |",
 		);
 		expect(comment).toContain(
 			`${context.repositoryUrl}/blob/${context.headSha}/src/billing/invoice.ts#L41-L44`,
 		);
 		expect(comment).not.toContain("/pull/");
+		// The detail lives in the finding comments.
+		expect(comment).not.toContain("```diff");
+		expect(comment).not.toContain("How to fix");
 	});
 
-	it("renders the evidence as an added diff line and the fix block", () => {
-		const comment = renderSummaryComment(exampleReport(), context);
-		expect(comment).toContain(
-			"```diff\n+ const total: number = subtotal * 1.2\n```",
-		);
-		expect(comment).toContain(
-			"> 💡 **How to fix:** Use the Money value object.",
-		);
-		expect(comment).toContain(
-			"[engineering.example.com/decisions/money-values](https://engineering.example.com/decisions/money-values)",
+	it("expands a finding without a finding comment", () => {
+		const report = exampleReport();
+		const unanchored = report.findings[2];
+		if (unanchored === undefined) {
+			throw new Error("The example report has three findings.");
+		}
+		const comment = renderSummaryComment(report, context, [unanchored]);
+		expect(comment).toContain("### Findings without a review comment");
+		expect(comment).toContain("could not be anchored");
+		// The expanded finding keeps its overview number.
+		expect(comment).toContain("#### 3. `api.problem-details-errors` — SHOULD");
+		expect(comment).toContain("```diff\n+ error: { type: string }\n```");
+		// A partially anchored review does not claim every finding has one.
+		expect(comment).not.toContain(
+			"Each confirmed finding has a review comment on its lines.",
 		);
 	});
 
@@ -142,14 +152,14 @@ describe("renderSummaryComment", () => {
 		expect(comment).toContain("confirmed by an independent verification pass");
 	});
 
-	it("omits the overview table with one finding and empty sections", () => {
+	it("keeps the overview table with one finding, omits empty sections", () => {
 		const report = exampleReport();
 		report.findings = report.findings.slice(0, 1);
 		report.suppressed = [];
 		report.invalid_suppressions = [];
 		const comment = renderSummaryComment(report, context);
-		expect(comment).not.toContain("| # | Rule | Level | Location |");
-		expect(comment).not.toContain("### ⚠️ Warnings");
+		expect(comment).toContain("| # | Rule | Level | Location |");
+		expect(comment).not.toContain("### Findings without a review comment");
 		expect(comment).not.toContain("### 🔇 Suppressed");
 	});
 
@@ -162,40 +172,110 @@ describe("renderSummaryComment", () => {
 		const comment = renderSummaryComment(report, context);
 		expect(comment).toContain("## ✅ Standards review — Compliant");
 		expect(comment).toContain("**No blocking findings.**");
-		expect(comment).toContain("Warnings do not block the merge by themselves.");
+	});
+});
+
+describe("renderFindingComment", () => {
+	const finding = () => {
+		const found = exampleReport().findings[0];
+		if (found === undefined) {
+			throw new Error("The example report has three findings.");
+		}
+		return found;
+	};
+
+	it("starts with the fingerprint marker and renders the finding", () => {
+		const comment = renderFindingComment(finding(), context);
+		const lines = comment.split("\n");
+		expect(lines[0]).toBe(
+			`<!-- standards:finding:v1:${findingFingerprint(finding())} -->`,
+		);
+		expect(lines[0]).toMatch(FINDING_MARKER_PATTERN);
+		expect(lines[1]).toBe(
+			"🛑 **The invoice total is computed as a floating-point number.**",
+		);
+		expect(comment).toContain("💡 Use the Money value object.");
+		expect(comment).toContain(
+			"📚 [engineering.example.com/decisions/money-values](https://engineering.example.com/decisions/money-values)",
+		);
+		expect(comment).toContain(
+			"<sub>MUST NOT · `payments.no-floating-point-money` · Standards review</sub>",
+		);
+		// The annotated lines sit directly above the comment.
+		expect(comment).not.toContain("Evidence");
+		expect(comment).not.toContain("```diff");
 	});
 
-	it("truncates a manipulated evidence quote", () => {
+	it("marks a warning-level finding and omits absent advice", () => {
+		const warning = exampleReport().findings[2];
+		if (warning === undefined) {
+			throw new Error("The example report has three findings.");
+		}
+		const comment = renderFindingComment(warning, context);
+		expect(comment).toContain(
+			"🟡 **The error response defines an ad-hoc shape.**",
+		);
+		expect(comment).not.toContain("💡");
+		expect(comment).toContain(
+			"<sub>SHOULD · `api.problem-details-errors` · Standards review</sub>",
+		);
+	});
+
+	it("keeps the fingerprint stable when only the lines move", () => {
+		const moved = { ...finding(), lines: [90, 93] as [number, number] };
+		expect(findingFingerprint(moved)).toBe(findingFingerprint(finding()));
+	});
+
+	it("changes the fingerprint when the evidence changes", () => {
+		const changed = { ...finding(), evidence: "const total = subtotal * 1.3" };
+		expect(findingFingerprint(changed)).not.toBe(findingFingerprint(finding()));
+	});
+});
+
+describe("expanded finding evidence", () => {
+	/** A report whose only finding renders expanded in the summary comment. */
+	const reportWithEvidence = (evidence: string) => {
 		const report = exampleReport();
-		report.findings = report.findings.slice(0, 1).map((finding) => ({
-			...finding,
-			evidence: Array.from({ length: 40 }, (_, index) => `line ${index}`).join(
-				"\n",
-			),
-		}));
-		const comment = renderSummaryComment(report, context);
+		report.findings = report.findings
+			.slice(0, 1)
+			.map((finding) => ({ ...finding, evidence }));
+		return report;
+	};
+
+	it("truncates a manipulated evidence quote", () => {
+		const report = reportWithEvidence(
+			Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\n"),
+		);
+		const comment = renderSummaryComment(report, context, report.findings);
 		expect(comment).toContain("+ line 9");
 		expect(comment).not.toContain("+ line 10");
 		expect(comment).toContain("+ …");
 	});
 
 	it("keeps evidence backticks inside the code fence", () => {
-		const report = exampleReport();
-		report.findings = report.findings
-			.slice(0, 1)
-			.map((finding) => ({ ...finding, evidence: "``` injected\ntext" }));
-		const comment = renderSummaryComment(report, context);
+		const report = reportWithEvidence("``` injected\ntext");
+		const comment = renderSummaryComment(report, context, report.findings);
 		expect(comment).toContain("````diff\n+ ``` injected\n+ text\n````");
 	});
 });
 
 describe("renderCheckRunSummary", () => {
-	it("renders the same body without the comment marker", () => {
+	it("keeps every finding expanded on the standalone surface", () => {
 		const summary = renderCheckRunSummary(exampleReport(), context);
 		expect(summary.startsWith("## 🛑 Standards review — Non-compliant")).toBe(
 			true,
 		);
 		expect(summary).not.toContain(REPORT_COMMENT_MARKER);
+		const order = [
+			"| # | Rule | Level | Location |",
+			"### 🛑 Blocking findings",
+			"#### 1. `payments.no-floating-point-money` — MUST NOT",
+			"### ⚠️ Warnings",
+			"### 🔇 Suppressed",
+		];
+		const positions = order.map((section) => summary.indexOf(section));
+		expect(positions.every((position) => position >= 0)).toBe(true);
+		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
 	});
 });
 

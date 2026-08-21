@@ -84,8 +84,8 @@ Suppressions are visible, or they are a hole. The report defined in
   skipped.
 
 On GitHub, suppressed findings appear in the check run summary and the
-summary comment through the report, but MUST NOT produce annotations, as
-specified in [Standards GitHub Action](./github.md).
+summary comment through the report, but MUST NOT produce finding comments,
+as specified in [Standards GitHub Action](./github.md).
 
 ## Security considerations
 

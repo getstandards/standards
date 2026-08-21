@@ -2,17 +2,23 @@ import { Octokit } from "@octokit/rest";
 import { describe, expect, it } from "vitest";
 import type { ReportedFinding } from "../review/review-report.js";
 import {
-	buildAnnotations,
 	createCheckRun,
+	createFindingComments,
 	createPullRequestComment,
 	updateCheckRun,
 	updatePullRequestComment,
 	upsertSummaryComment,
 } from "./action-runner.js";
-import { REPORT_COMMENT_MARKER } from "./report-markdown.js";
+import {
+	findingFingerprint,
+	REPORT_COMMENT_MARKER,
+} from "./report-markdown.js";
 
-/** A mocked GitHub API that records requests and returns queued bodies. */
-function mockGitHub(bodies: unknown[]): {
+/** One queued mock response: a JSON body with an optional error status. */
+type MockResponse = unknown | { status: number; body: unknown };
+
+/** A mocked GitHub API that records requests and returns queued responses. */
+function mockGitHub(responses: MockResponse[]): {
 	github: Octokit;
 	requests: Request[];
 } {
@@ -20,10 +26,14 @@ function mockGitHub(bodies: unknown[]): {
 	let responseIndex = 0;
 	const mockFetch: typeof fetch = async (input, init) => {
 		requests.push(new Request(input, init));
-		const body = bodies[responseIndex] ?? {};
+		const queued = responses[responseIndex] ?? {};
 		responseIndex += 1;
-		return new Response(JSON.stringify(body), {
-			status: 200,
+		const withStatus =
+			typeof queued === "object" && queued !== null && "status" in queued
+				? (queued as { status: number; body: unknown })
+				: { status: 200, body: queued };
+		return new Response(JSON.stringify(withStatus.body), {
+			status: withStatus.status,
 			headers: { "content-type": "application/json" },
 		});
 	};
@@ -108,65 +118,107 @@ describe("GitHub feedback", () => {
 	});
 });
 
-describe("annotations", () => {
+describe("createFindingComments", () => {
+	const target = {
+		owner: "acme",
+		repository: "widgets",
+		pullRequestNumber: 42,
+		headSha: "0123456789abcdef0123456789abcdef01234567",
+	};
 	const finding = (
 		line: number,
-		level: "MUST NOT" | "SHOULD",
+		lastLine = line,
+		rule = "money.no-float",
 	): ReportedFinding => ({
-		rule: "money.no-float",
-		level,
+		rule,
+		level: "MUST NOT",
 		path: "invoice.ts",
-		lines: [line, line],
-		evidence: "const total = subtotal * 1.2",
+		lines: [line, lastLine],
+		evidence: `const total = subtotal * 1.2 // ${rule}:${line}`,
 		reason: "The total is a floating-point number.",
-		guidance: "Use an integer of cents.",
 	});
+	const renderBody = (comment: ReportedFinding) =>
+		`<!-- standards:finding:v1:${findingFingerprint(comment)} -->\nbody`;
 
-	it("maps levels to annotation levels and carries the rule text", () => {
-		const annotations = buildAnnotations([
-			finding(1, "MUST NOT"),
-			finding(2, "SHOULD"),
-		]);
-		expect(annotations[0]).toEqual({
-			path: "invoice.ts",
-			start_line: 1,
-			end_line: 1,
-			annotation_level: "failure",
-			title: "money.no-float — MUST NOT",
-			message:
-				"The total is a floating-point number.\n\nHow to fix: Use an integer of cents.",
-		});
-		expect(annotations[1]?.annotation_level).toBe("warning");
-	});
+	it("posts one COMMENT review with one comment per finding", async () => {
+		const { github, requests } = mockGitHub([[], {}]);
 
-	it("batches more than fifty annotations across update requests", async () => {
-		const { github, requests } = mockGitHub([{}, {}, {}]);
-		const annotations = buildAnnotations(
-			Array.from({ length: 120 }, (_, index) => finding(index + 1, "MUST NOT")),
-		);
-
-		await updateCheckRun(
+		const unanchored = await createFindingComments(
 			github,
-			{ owner: "acme", repository: "widgets" },
-			202,
-			{
-				conclusion: "failure",
-				title: "Non-compliant",
-				summary: "Report",
-				annotations,
-			},
+			target,
+			[finding(1), finding(8, 12, "money.no-round")],
+			renderBody,
 		);
 
-		expect(requests).toHaveLength(3);
-		const bodies = await Promise.all(
-			requests.map(async (request) => JSON.parse(await request.text())),
+		expect(unanchored).toEqual([]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+		]);
+		const review = JSON.parse(await (requests[1]?.text() ?? ""));
+		expect(review.event).toBe("COMMENT");
+		expect(review.commit_id).toBe(target.headSha);
+		expect(review.comments).toHaveLength(2);
+		expect(review.comments[0]).toMatchObject({
+			path: "invoice.ts",
+			line: 1,
+			side: "RIGHT",
+		});
+		expect(review.comments[0].start_line).toBeUndefined();
+		expect(review.comments[1]).toMatchObject({ line: 12, start_line: 8 });
+	});
+
+	it("skips findings whose fingerprint marker already exists", async () => {
+		const posted = finding(1);
+		const { github, requests } = mockGitHub([
+			[{ id: 7, body: renderBody(posted) }],
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			renderBody,
 		);
-		expect(bodies[0].status).toBe("completed");
-		expect(bodies[0].output.annotations).toHaveLength(50);
-		expect(bodies[1].status).toBeUndefined();
-		expect(bodies[1].output.annotations).toHaveLength(50);
-		expect(bodies[2].output.annotations).toHaveLength(20);
-		expect(bodies[2].output.annotations[19].start_line).toBe(120);
+
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET"]);
+	});
+
+	it("falls back to one comment per finding and returns the unanchored", async () => {
+		const anchorable = finding(1);
+		const outsideDiff = finding(900, 900, "money.no-round");
+		const { github, requests } = mockGitHub([
+			[],
+			{ status: 422, body: { message: "not part of the diff" } },
+			{},
+			{ status: 422, body: { message: "not part of the diff" } },
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[anchorable, outsideDiff],
+			renderBody,
+		);
+
+		expect(unanchored).toEqual([outsideDiff]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+		]);
 	});
 });
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Octokit } from "@octokit/rest";
 import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
 import { formatReviewFailure } from "../cli/commands/review.js";
+import { renderReviewReportText } from "../cli/commands/review-report-text.js";
 import { formatValidationError } from "../cli/commands/validate-diagnostic.js";
 import { loadRules } from "../config/configuration-resolver.js";
 import type { Rule } from "../config/index.js";
@@ -19,15 +20,16 @@ import {
 import type { ReviewEnvironment } from "./action-inputs.js";
 import { buildReviewEnvironment } from "./action-inputs.js";
 import {
-	buildAnnotations,
 	createActionRuntime,
 	createCheckRun,
+	createFindingComments,
 	updateCheckRun,
 	upsertSummaryComment,
 } from "./action-runner.js";
 import {
 	renderCheckRunSummary,
 	renderFailureComment,
+	renderFindingComment,
 	renderSummaryComment,
 } from "./report-markdown.js";
 
@@ -65,11 +67,13 @@ export interface RunActionOverrides {
 /**
  * Run one Standards GitHub Action review (specs/github.md run behavior).
  *
- * It creates the check run, runs the review pipeline, completes the check
- * run with the report and one annotation per confirmed finding, creates or
- * updates the summary comment, and returns the exit status that matches the
- * conclusion: 0 compliant, 1 non-compliant, 2 when the run could not
- * complete.
+ * It creates the check run, runs the review pipeline, writes the report to
+ * the step log, completes the check run with the report, creates one
+ * finding comment per new confirmed finding, creates or updates the summary
+ * comment, and returns the exit status of the outcome: 0 for a completed
+ * review whatever the conclusion, 2 when the run could not complete. The
+ * check run carries the verdict; the job stays green so a rule violation
+ * does not look like a tool failure.
  */
 export async function runAction(
 	environment: NodeJS.ProcessEnv = process.env,
@@ -95,7 +99,6 @@ export async function runAction(
 		conclusion: "success" | "failure" | "neutral" | "cancelled";
 		title: string;
 		summary: string;
-		annotations?: ReturnType<typeof buildAnnotations>;
 	}) => updateCheckRun(github, repositoryTarget, checkRun.id, options);
 
 	if (!review.hasCredential) {
@@ -132,6 +135,10 @@ export async function runAction(
 			abortController.signal,
 			overrides.createModels ?? createAutomationModels,
 		);
+		// The step log carries the report too: a user who opens the job log
+		// must not find a bare failure (specs/github.md step log).
+		console.log(renderReviewReportText(report.report));
+		console.log(`\n${conclusionLogLine(report.report)}`);
 		const conclusion =
 			report.report.conclusion === "compliant" ? "success" : "failure";
 		await completeCheckRun({
@@ -141,8 +148,17 @@ export async function runAction(
 					? "Compliant"
 					: "Non-compliant",
 			summary: renderCheckRunSummary(report.report, report.renderContext),
-			annotations: buildAnnotations(report.report.findings),
 		});
+		const unanchored = await createFindingComments(
+			github,
+			{
+				...repositoryTarget,
+				pullRequestNumber: context.pullRequestNumber,
+				headSha: context.headSha,
+			},
+			report.report.findings,
+			(finding) => renderFindingComment(finding, report.renderContext),
+		);
 		const hasEntries =
 			report.report.findings.length > 0 ||
 			report.report.suppressed.length > 0 ||
@@ -150,11 +166,13 @@ export async function runAction(
 		await upsertSummaryComment(
 			github,
 			{ ...repositoryTarget, pullRequestNumber: context.pullRequestNumber },
-			renderSummaryComment(report.report, report.renderContext),
+			renderSummaryComment(report.report, report.renderContext, unanchored),
 			hasEntries,
 		);
 		await writeActionOutputs(report.report, environment);
-		return report.report.conclusion === "compliant" ? 0 : 1;
+		// A completed review exits 0 whatever the conclusion: the check run is
+		// the verdict surface, and merging is gated by requiring it.
+		return 0;
 	} catch (error) {
 		if (abortController.signal.aborted) {
 			await completeQuietly(() =>
@@ -192,6 +210,24 @@ export async function runAction(
 		process.removeListener("SIGINT", handleSignal);
 		process.removeListener("SIGTERM", handleSignal);
 	}
+}
+
+/**
+ * The final step log line: the conclusion, the finding counts, and where
+ * the full result appears (specs/github.md step log).
+ */
+function conclusionLogLine(report: ReviewReport): string {
+	const blocking = report.findings.filter(
+		(finding) => finding.level === "MUST" || finding.level === "MUST NOT",
+	).length;
+	const warnings = report.findings.length - blocking;
+	const label =
+		report.conclusion === "compliant" ? "Compliant" : "Non-compliant";
+	const counts = [
+		`${blocking} blocking ${blocking === 1 ? "finding" : "findings"}`,
+		`${warnings} ${warnings === 1 ? "warning" : "warnings"}`,
+	].join(", ");
+	return `${label}: ${counts}. See the Standards check run and the pull request comments.`;
 }
 
 /**

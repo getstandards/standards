@@ -2,7 +2,11 @@ import { Octokit } from "@octokit/rest";
 import type { ReportedFinding } from "../review/review-report.js";
 import type { ActionInputs } from "./action-inputs.js";
 import { parseActionInputs } from "./action-inputs.js";
-import { REPORT_COMMENT_MARKER } from "./report-markdown.js";
+import {
+	FINDING_MARKER_PATTERN,
+	findingFingerprint,
+	REPORT_COMMENT_MARKER,
+} from "./report-markdown.js";
 
 /** A repository targeted by the action. */
 export interface RepositoryTarget {
@@ -33,51 +37,11 @@ export type CheckRunConclusion =
 	| "neutral"
 	| "cancelled";
 
-/** One check run annotation on a confirmed finding (specs/github.md). */
-export interface CheckRunAnnotation {
-	path: string;
-	start_line: number;
-	end_line: number;
-	annotation_level: "failure" | "warning" | "notice";
-	title: string;
-	message: string;
-}
-
 /** Content used to update and complete a Standards check run. */
 export interface UpdateCheckRunOptions {
 	conclusion: CheckRunConclusion;
 	title: string;
 	summary: string;
-	annotations?: readonly CheckRunAnnotation[];
-}
-
-/** The most annotations one check run update request accepts. */
-const ANNOTATION_BATCH_SIZE = 50;
-
-/**
- * Map confirmed findings to check run annotations (specs/github.md).
- *
- * A `MUST` or `MUST NOT` finding annotates as a failure; every other level
- * annotates as a warning. The text carries the rule id, the reason, and the
- * rule's guidance when present.
- */
-export function buildAnnotations(
-	findings: readonly ReportedFinding[],
-): CheckRunAnnotation[] {
-	return findings.map((finding) => ({
-		path: finding.path,
-		start_line: finding.lines[0],
-		end_line: finding.lines[1],
-		annotation_level:
-			finding.level === "MUST" || finding.level === "MUST NOT"
-				? "failure"
-				: "warning",
-		title: `${finding.rule} — ${finding.level}`,
-		message:
-			finding.guidance === undefined
-				? finding.reason
-				: `${finding.reason}\n\nHow to fix: ${finding.guidance}`,
-	}));
 }
 
 /** Runtime dependencies created from action inputs. */
@@ -137,28 +101,13 @@ export async function createCheckRun(
 	return { id: data.id, url: data.html_url ?? "" };
 }
 
-/**
- * Update and complete a check run previously created by the action.
- *
- * The API accepts at most fifty annotations per request, so the annotations
- * go out in batches and every finding is annotated (specs/github.md).
- */
+/** Update and complete a check run previously created by the action. */
 export async function updateCheckRun(
 	github: Octokit,
 	target: RepositoryTarget,
 	checkRunId: number,
 	options: UpdateCheckRunOptions,
 ): Promise<void> {
-	const annotations = options.annotations ?? [];
-	const batches: CheckRunAnnotation[][] = [];
-	for (
-		let start = 0;
-		start < annotations.length;
-		start += ANNOTATION_BATCH_SIZE
-	) {
-		batches.push(annotations.slice(start, start + ANNOTATION_BATCH_SIZE));
-	}
-
 	await github.checks.update({
 		owner: target.owner,
 		repo: target.repository,
@@ -169,21 +118,114 @@ export async function updateCheckRun(
 		output: {
 			title: options.title,
 			summary: options.summary,
-			annotations: batches[0] ?? [],
 		},
 	});
-	for (const batch of batches.slice(1)) {
-		await github.checks.update({
-			owner: target.owner,
-			repo: target.repository,
-			check_run_id: checkRunId,
-			output: {
-				title: options.title,
-				summary: options.summary,
-				annotations: batch,
-			},
-		});
+}
+
+/** The repository, pull request, and head commit finding comments target. */
+export interface FindingCommentTarget extends PullRequestTarget {
+	headSha: string;
+}
+
+/** List the fingerprints of the finding comments already on a pull request. */
+export async function listFindingFingerprints(
+	github: Octokit,
+	target: PullRequestTarget,
+): Promise<Set<string>> {
+	const comments = await github.paginate(github.pulls.listReviewComments, {
+		owner: target.owner,
+		repo: target.repository,
+		pull_number: target.pullRequestNumber,
+		per_page: 100,
+	});
+	const fingerprints = new Set<string>();
+	for (const comment of comments) {
+		const fingerprint = comment.body.match(FINDING_MARKER_PATTERN)?.[1];
+		if (fingerprint !== undefined) {
+			fingerprints.add(fingerprint);
+		}
 	}
+	return fingerprints;
+}
+
+/** One review comment of the finding review, anchored to the head commit. */
+function reviewComment(finding: ReportedFinding, body: string) {
+	const comment = {
+		path: finding.path,
+		line: finding.lines[1],
+		side: "RIGHT" as const,
+		body,
+	};
+	return finding.lines[0] === finding.lines[1]
+		? comment
+		: {
+				...comment,
+				start_line: finding.lines[0],
+				start_side: "RIGHT" as const,
+			};
+}
+
+/**
+ * Create one finding comment per new confirmed finding (specs/github.md).
+ *
+ * Findings whose fingerprint marker already exists on the pull request are
+ * skipped, so a re-run never duplicates a comment. The comments post as one
+ * pull request review with the `COMMENT` event and no body, so no verdict is
+ * expressed and reviewers get one notification. GitHub rejects a comment
+ * whose location is not part of the diff, and one rejected location fails
+ * the whole review, so a failed review falls back to one comment per
+ * finding. The returned findings could not be anchored; the summary comment
+ * renders them expanded instead.
+ */
+export async function createFindingComments(
+	github: Octokit,
+	target: FindingCommentTarget,
+	findings: readonly ReportedFinding[],
+	renderBody: (finding: ReportedFinding) => string,
+): Promise<ReportedFinding[]> {
+	if (findings.length === 0) {
+		return [];
+	}
+	const existing = await listFindingFingerprints(github, target);
+	const newFindings = findings.filter(
+		(finding) => !existing.has(findingFingerprint(finding)),
+	);
+	if (newFindings.length === 0) {
+		return [];
+	}
+	const comments = newFindings.map((finding) =>
+		reviewComment(finding, renderBody(finding)),
+	);
+	const pullRequest = {
+		owner: target.owner,
+		repo: target.repository,
+		pull_number: target.pullRequestNumber,
+		commit_id: target.headSha,
+	};
+	try {
+		await github.pulls.createReview({
+			...pullRequest,
+			event: "COMMENT",
+			body: "",
+			comments,
+		});
+		return [];
+	} catch {
+		// Fall through to one comment per finding.
+	}
+	const unanchored: ReportedFinding[] = [];
+	for (const [index, finding] of newFindings.entries()) {
+		const comment = comments[index];
+		if (comment === undefined) {
+			continue;
+		}
+		try {
+			await github.pulls.createReviewComment({ ...pullRequest, ...comment });
+		} catch {
+			unanchored.push(finding);
+		}
+	}
+	return unanchored;
 }
 
 /** Find the summary comment by its hidden marker (specs/github.md). */

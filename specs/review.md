@@ -34,9 +34,9 @@ selects its model. It does not specify:
   [Standards settings](./settings.md) defines it.
 - The option surface of `standards review`. [Standards CLI](./cli.md) defines
   the CLI.
-- The delivery surface. A terminal, a check run, and a pull request comment
-  render the same report data. [Standards GitHub Action](./github.md)
-  defines the GitHub surfaces.
+- The delivery surface. A terminal, a step log, a check run, and pull
+  request comments render the same report data.
+  [Standards GitHub Action](./github.md) defines the GitHub surfaces.
 
 ## Inputs
 

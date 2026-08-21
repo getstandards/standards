@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Rule } from "../config/index.js";
 import type { StepUsage } from "../review/agent-usage.js";
 import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
@@ -7,6 +8,31 @@ import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
  * It is the comment's first line; the action finds the comment by it.
  */
 export const REPORT_COMMENT_MARKER = "<!-- standards:report:v1 -->";
+
+/**
+ * The marker pattern that identifies a finding comment and captures its
+ * fingerprint (specs/github.md finding comments).
+ */
+export const FINDING_MARKER_PATTERN =
+	/<!-- standards:finding:v1:([0-9a-f]{16}) -->/;
+
+/**
+ * The fingerprint that identifies a finding across runs (specs/github.md).
+ *
+ * The `lines` are not part of it, so a push that only moves a finding does
+ * not repost its comment.
+ */
+export function findingFingerprint(finding: ReportedFinding): string {
+	return createHash("sha256")
+		.update(`${finding.rule}\n${finding.path}\n${finding.evidence}`)
+		.digest("hex")
+		.slice(0, 16);
+}
+
+/** The hidden marker on a finding comment's first line (specs/github.md). */
+function findingCommentMarker(finding: ReportedFinding): string {
+	return `<!-- standards:finding:v1:${findingFingerprint(finding)} -->`;
+}
 
 /**
  * The most evidence lines one finding may quote in the comment.
@@ -209,7 +235,7 @@ function countPhrase(count: number, singular: string, plural: string): string {
 }
 
 /** Render the alert callout with the merge verdict and the finding counts. */
-function verdictCallout(report: ReviewReport): string {
+function verdictCallout(report: ReviewReport, noteComments = false): string {
 	const blocking = report.findings.filter((finding) =>
 		isBlockingLevel(finding.level),
 	).length;
@@ -236,6 +262,10 @@ function verdictCallout(report: ReviewReport): string {
 		listed.length === 0
 			? ""
 			: ` ${joinPhrases(listed.map((entry) => entry.phrase))} ${verb} listed below.`;
+	const commentsNote =
+		noteComments && report.findings.length > 0
+			? " Each confirmed finding has a review comment on its lines."
+			: "";
 
 	if (blocking > 0) {
 		const findingPhrase = countPhrase(
@@ -243,9 +273,9 @@ function verdictCallout(report: ReviewReport): string {
 			"blocking finding",
 			"blocking findings",
 		);
-		return `> [!CAUTION]\n> **${findingPhrase}** must be resolved or suppressed with a reason before this pull request can merge.${listedSentence}`;
+		return `> [!CAUTION]\n> **${findingPhrase}** must be resolved or suppressed with a reason before this pull request can merge.${listedSentence}${commentsNote}`;
 	}
-	return `> [!NOTE]\n> **No blocking findings.** This pull request can merge.${listedSentence}`;
+	return `> [!NOTE]\n> **No blocking findings.** This pull request can merge.${listedSentence}${commentsNote}`;
 }
 
 /** Render the overview table shown when more than one finding exists. */
@@ -354,8 +384,10 @@ function footer(context: ReportRenderContext): string {
 }
 
 /**
- * Render the report as the summary comment and check run body
- * (specs/github.md comment layout). Sections with no entries do not render.
+ * Render the report as the check run body (specs/github.md run behavior).
+ *
+ * The check run is a standalone surface without nearby finding comments, so
+ * it keeps every finding expanded. Sections with no entries do not render.
  */
 function renderReportBody(
 	report: ReviewReport,
@@ -415,13 +447,90 @@ function clampSurface(body: string): string {
 	return body.slice(0, SURFACE_CHARACTER_LIMIT - notice.length) + notice;
 }
 
-/** Render the summary comment for one review report (specs/github.md). */
+/**
+ * Render the summary comment for one review report (specs/github.md comment
+ * layout).
+ *
+ * The comment is the index of the review: the per-finding detail lives in
+ * the finding comments, so it repeats no finding beyond one overview row.
+ * `unanchored` names the findings without a finding comment — locations the
+ * pull request diff rejected — and only those render expanded here.
+ */
 export function renderSummaryComment(
 	report: ReviewReport,
 	context: ReportRenderContext,
+	unanchored: readonly ReportedFinding[] = [],
 ): string {
+	const compliant = report.conclusion === "compliant";
+	const heading = compliant
+		? "## ✅ Standards review — Compliant"
+		: "## 🛑 Standards review — Non-compliant";
+
+	// Blocking findings come first, so numbering follows the display order.
+	const blocking = report.findings.filter((finding) =>
+		isBlockingLevel(finding.level),
+	);
+	const warnings = report.findings.filter(
+		(finding) => !isBlockingLevel(finding.level),
+	);
+	const numbered = [...blocking, ...warnings];
+	const unanchoredSet = new Set(unanchored);
+	const expanded = numbered.filter((finding) => unanchoredSet.has(finding));
+
+	const sections: string[] = [
+		REPORT_COMMENT_MARKER,
+		heading,
+		verdictCallout(report, expanded.length === 0),
+	];
+	if (numbered.length > 0) {
+		sections.push(overviewTable(context, numbered));
+	}
+	if (expanded.length > 0) {
+		sections.push(
+			"### Findings without a review comment",
+			"These findings could not be anchored to the pull request diff.",
+			...expanded.flatMap((finding) =>
+				expandedFinding(context, finding, numbered.indexOf(finding) + 1),
+			),
+		);
+	}
+	sections.push(
+		...suppressedSection(context, report),
+		detailsSection(report),
+		footer(context),
+	);
+	// The marker joins with a line break so it stays the first line.
+	const [marker, ...body] = sections;
+	return clampSurface(`${marker}\n${body.join("\n\n")}`);
+}
+
+/**
+ * Render one finding comment body (specs/github.md finding comments).
+ *
+ * The comment is short prose under the annotated lines: a severity emoji
+ * and the reason in bold, the guidance and references as plain lines, and
+ * a footer with the level and the rule id. It quotes no evidence — the
+ * annotated lines sit directly above it.
+ */
+export function renderFindingComment(
+	finding: ReportedFinding,
+	context: ReportRenderContext,
+): string {
+	const emoji = isBlockingLevel(finding.level) ? "🛑" : "🟡";
+	const advice: string[] = [];
+	if (finding.guidance !== undefined) {
+		advice.push(`💡 ${finding.guidance}`);
+	}
+	for (const reference of finding.references ?? []) {
+		advice.push(`📚 ${referenceLink(context, reference)}`);
+	}
+	const sections = [
+		`${emoji} **${finding.reason}**`,
+		...(advice.length > 0 ? [advice.join("\n")] : []),
+		`<sub>${finding.level} · \`${finding.rule}\` · Standards review</sub>`,
+	];
 	return clampSurface(
-		`${REPORT_COMMENT_MARKER}\n${renderReportBody(report, context)}`,
+		`${findingCommentMarker(finding)}\n${sections.join("\n\n")}`,
 	);
 }
 

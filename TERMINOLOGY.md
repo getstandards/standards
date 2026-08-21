@@ -5,9 +5,8 @@ Canonical words used across Standards code and documentation.
 ## Terms
 
 - **action output** — One value the action sets for later workflow steps: `conclusion`, `blocking-count`, `warning-count`, or `report-file`.
-- **annotation** — One check run mark on a confirmed finding's `path` and `lines`: `failure` for `MUST`/`MUST NOT`, `warning` otherwise.
 - **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files.
-- **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion, the report, and the annotations.
+- **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion and the report.
 - **configuration** — The validated `.standards.yml` document (`version`, `name`, `description`, `extends`, `rules`).
 - **configuration graph** — The transitive graph of configuration files reached through `extends`, walked during resolution.
 - **diagnostic** — A structured, human-actionable error report with category, source, field, problem, and next action.
@@ -15,6 +14,8 @@ Canonical words used across Standards code and documentation.
 - **extends** — An ordered list of other configuration sources loaded before the current file's own rules.
 - **extension cycle** — A resolution failure that occurs when a source extends itself, directly or indirectly.
 - **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`.
+- **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
+- **fingerprint** — The identifier of a finding across runs: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the `evidence`, joined with a newline.
 - **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
