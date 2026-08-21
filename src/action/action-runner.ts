@@ -1,6 +1,8 @@
 import { Octokit } from "@octokit/rest";
+import type { ReportedFinding } from "../review/review-report.js";
 import type { ActionInputs } from "./action-inputs.js";
 import { parseActionInputs } from "./action-inputs.js";
+import { REPORT_COMMENT_MARKER } from "./report-markdown.js";
 
 /** A repository targeted by the action. */
 export interface RepositoryTarget {
@@ -31,11 +33,51 @@ export type CheckRunConclusion =
 	| "neutral"
 	| "cancelled";
 
+/** One check run annotation on a confirmed finding (specs/github.md). */
+export interface CheckRunAnnotation {
+	path: string;
+	start_line: number;
+	end_line: number;
+	annotation_level: "failure" | "warning" | "notice";
+	title: string;
+	message: string;
+}
+
 /** Content used to update and complete a Standards check run. */
 export interface UpdateCheckRunOptions {
 	conclusion: CheckRunConclusion;
 	title: string;
 	summary: string;
+	annotations?: readonly CheckRunAnnotation[];
+}
+
+/** The most annotations one check run update request accepts. */
+const ANNOTATION_BATCH_SIZE = 50;
+
+/**
+ * Map confirmed findings to check run annotations (specs/github.md).
+ *
+ * A `MUST` or `MUST NOT` finding annotates as a failure; every other level
+ * annotates as a warning. The text carries the rule id, the reason, and the
+ * rule's guidance when present.
+ */
+export function buildAnnotations(
+	findings: readonly ReportedFinding[],
+): CheckRunAnnotation[] {
+	return findings.map((finding) => ({
+		path: finding.path,
+		start_line: finding.lines[0],
+		end_line: finding.lines[1],
+		annotation_level:
+			finding.level === "MUST" || finding.level === "MUST NOT"
+				? "failure"
+				: "warning",
+		title: `${finding.rule} — ${finding.level}`,
+		message:
+			finding.guidance === undefined
+				? finding.reason
+				: `${finding.reason}\n\nHow to fix: ${finding.guidance}`,
+	}));
 }
 
 /** Runtime dependencies created from action inputs. */
@@ -95,13 +137,28 @@ export async function createCheckRun(
 	return { id: data.id, url: data.html_url ?? "" };
 }
 
-/** Update and complete a check run previously created by the action. */
+/**
+ * Update and complete a check run previously created by the action.
+ *
+ * The API accepts at most fifty annotations per request, so the annotations
+ * go out in batches and every finding is annotated (specs/github.md).
+ */
 export async function updateCheckRun(
 	github: Octokit,
 	target: RepositoryTarget,
 	checkRunId: number,
 	options: UpdateCheckRunOptions,
 ): Promise<void> {
+	const annotations = options.annotations ?? [];
+	const batches: CheckRunAnnotation[][] = [];
+	for (
+		let start = 0;
+		start < annotations.length;
+		start += ANNOTATION_BATCH_SIZE
+	) {
+		batches.push(annotations.slice(start, start + ANNOTATION_BATCH_SIZE));
+	}
+
 	await github.checks.update({
 		owner: target.owner,
 		repo: target.repository,
@@ -112,8 +169,60 @@ export async function updateCheckRun(
 		output: {
 			title: options.title,
 			summary: options.summary,
+			annotations: batches[0] ?? [],
 		},
 	});
+	for (const batch of batches.slice(1)) {
+		await github.checks.update({
+			owner: target.owner,
+			repo: target.repository,
+			check_run_id: checkRunId,
+			output: {
+				title: options.title,
+				summary: options.summary,
+				annotations: batch,
+			},
+		});
+	}
+}
+
+/** Find the summary comment by its hidden marker (specs/github.md). */
+export async function findSummaryCommentId(
+	github: Octokit,
+	target: PullRequestTarget,
+): Promise<number | undefined> {
+	const comments = await github.paginate(github.issues.listComments, {
+		owner: target.owner,
+		repo: target.repository,
+		issue_number: target.pullRequestNumber,
+		per_page: 100,
+	});
+	return comments.find((comment) =>
+		comment.body?.startsWith(REPORT_COMMENT_MARKER),
+	)?.id;
+}
+
+/**
+ * Create or update the summary comment (specs/github.md summary comment).
+ *
+ * An existing marked comment is updated in place. A missing comment is
+ * created only when `createWhenMissing` is true: a clean run adds no noise,
+ * so a compliant review without findings never creates one.
+ */
+export async function upsertSummaryComment(
+	github: Octokit,
+	target: PullRequestTarget,
+	body: string,
+	createWhenMissing: boolean,
+): Promise<void> {
+	const commentId = await findSummaryCommentId(github, target);
+	if (commentId !== undefined) {
+		await updatePullRequestComment(github, target, commentId, body);
+		return;
+	}
+	if (createWhenMissing) {
+		await createPullRequestComment(github, target, body);
+	}
 }
 
 /** Create the runtime dependencies used by the GitHub Action. */
@@ -125,11 +234,4 @@ export function createActionRuntime(
 		github: new Octokit({ auth: inputs.githubToken }),
 		inputs,
 	};
-}
-
-/** Initialize one Standards GitHub Action run. */
-export async function runAction(
-	environment: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
-	createActionRuntime(environment);
 }

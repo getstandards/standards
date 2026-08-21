@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://github.com/nlecoy/standards/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/nlecoy/standards?style=social"></a>
+  <a href="https://github.com/getstandards/standards/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/getstandards/standards?style=social"></a>
 </p>
 
 <!-- Add a screenshot of the pull request comment here. It is the best demo of what Standards does. -->
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: nlecoy/standards@v1
+      - uses: getstandards/standards@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```

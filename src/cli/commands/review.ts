@@ -227,7 +227,7 @@ Next action:
 }
 
 /** Format a review failure; a failed review reports no conclusion. */
-function formatReviewFailure(error: unknown): string {
+export function formatReviewFailure(error: unknown): string {
 	if (error instanceof ModelSelectionError) {
 		return error.diagnostic;
 	}

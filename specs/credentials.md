@@ -243,7 +243,9 @@ process as the environment variables above; the inputs are defined in
 
 The GitHub Action MUST give the SDK an empty in-memory credential store. It
 MUST also give the SDK an authentication context that exposes only the API key
-variables which the Action accepts. Its `fileExists` operation MUST return
+variables which the Action accepts: the principal variables above and the
+variables the workflow names in the `provider-env` input, as defined in
+[Standards GitHub Action](./github.md). Its `fileExists` operation MUST return
 `false`. This rule prevents a self-hosted runner from using a stored OAuth
 credential, an AWS profile, Google Application Default Credentials, or an
 unrelated provider variable. An OAuth credential belongs to a person's

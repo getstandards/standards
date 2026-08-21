@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: nlecoy/standards@v1
+      - uses: getstandards/standards@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -98,15 +98,37 @@ token the same.
 | `model` | No | Model reference forwarded as `STANDARDS_MODEL`. |
 | `evaluation-model` | No | Model reference forwarded as `STANDARDS_EVALUATION_MODEL`. |
 | `verification-model` | No | Model reference forwarded as `STANDARDS_VERIFICATION_MODEL`. |
+| `provider-env` | No | Names of extra provider credential variables, separated by spaces or commas. The action forwards each named variable from the step environment to the review. |
 
 The action is a thin surface: each input maps to one environment variable of
 `standards review`, and selection precedence stays as defined in
 [Standards review](./review.md). The action MUST NOT add its own precedence
 rules. An unknown input is rejected by GitHub Actions itself.
 
+The three API key inputs cover the principal providers defined in
+[Standards provider credentials](./credentials.md). The pi AI SDK registers
+more providers, and some need more than one value. A workflow selects such a
+provider by setting its variables on the step with `env:` and naming them in
+`provider-env`:
+
+```yaml
+      - uses: getstandards/standards@v1
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        with:
+          model: openrouter/deepseek/deepseek-v4
+          provider-env: OPENROUTER_API_KEY
+```
+
+The review reads only the variables the three key inputs map to and the
+variables named in `provider-env`. An ambient variable on a self-hosted
+runner that is not named MUST NOT reach the review. A provider without a
+default model in [Standards review](./review.md) also needs a model input.
+
 Provider API keys MUST be passed from repository or organization secrets.
-At least one provider input must resolve a usable credential;
-[Run behavior](#run-behavior) defines what happens when none does.
+At least one provider credential must resolve, through a key input or a
+variable named in `provider-env`; [Run behavior](#run-behavior) defines what
+happens when none does.
 
 ## Run behavior
 
@@ -317,7 +339,7 @@ Rejected findings are not shown.
 </details>
 
 ---
-🔍 Reviewed [`3f2a91c`](https://github.com/acme/shop/commit/3f2a91c) against merge base [`a1b04dd`](https://github.com/acme/shop/commit/a1b04dd) · [What is Standards?](https://github.com/nlecoy/standards)
+🔍 Reviewed [`3f2a91c`](https://github.com/acme/shop/commit/3f2a91c) against merge base [`a1b04dd`](https://github.com/acme/shop/commit/a1b04dd) · [What is Standards?](https://github.com/getstandards/standards)
 ````
 
 The first finding renders the same data as the JSON report example in
@@ -336,9 +358,10 @@ summary that explains why the review was skipped, and exit with status `0`.
 A fork contributor cannot fix a missing secret, so their pull request MUST
 NOT turn red for it.
 
-When no provider input resolves a usable credential and the pull request is
-not from a fork, the run is a setup error: the action MUST fail with a
-diagnostic that names the missing inputs.
+When no provider credential resolves, through a key input or a variable
+named in `provider-env`, and the pull request is not from a fork, the run is
+a setup error: the action MUST fail with a diagnostic that names the missing
+inputs.
 
 The action MUST NOT be used with the `pull_request_target` event. That event
 hands repository secrets to a run whose review reads `.standards.yml`, the

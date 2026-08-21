@@ -3,21 +3,36 @@ description: "Your engineering standards, written once and enforced everywhere."
 author: "Nicolas Lecoy <nicolas.lecoy@gmail.com>"
 
 inputs:
-  anthropic-api-key:
-    description: "Anthropic API key (sk-ant-...) or OAuth token. Can also be set via ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env vars."
-    required: false
   github-token:
-    description: "GitHub token for API access (defaults to GITHUB_TOKEN)"
+    description: "GitHub token for the check run and the summary comment. Defaults to the workflow's GITHUB_TOKEN."
     required: false
     default: ${{ github.token }}
+  anthropic-api-key:
+    description: "API key forwarded to the review as ANTHROPIC_API_KEY."
+    required: false
+  openai-api-key:
+    description: "API key forwarded to the review as OPENAI_API_KEY."
+    required: false
+  google-api-key:
+    description: "API key forwarded to the review as GEMINI_API_KEY."
+    required: false
+  model:
+    description: "Model reference forwarded as STANDARDS_MODEL."
+    required: false
+  evaluation-model:
+    description: "Model reference forwarded as STANDARDS_EVALUATION_MODEL."
+    required: false
+  verification-model:
+    description: "Model reference forwarded as STANDARDS_VERIFICATION_MODEL."
+    required: false
+  provider-env:
+    description: >-
+      Names of extra environment variables, separated by spaces or commas,
+      that the review may read for a provider credential. Set the variables
+      on the step with `env:`. Providers other than the principal three also
+      need a `model` input.
+    required: false
 
 runs:
-  using: "composite"
-  steps:
-    - name: "Run Standards"
-      id: standards
-      shell: bash
-      env:
-        INPUT_ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
-        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: node ${{ github.action_path }}/dist/action/index.js
+  using: "node24"
+  main: "dist/action/index.js"

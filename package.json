@@ -9,7 +9,7 @@
 	},
 	"scripts": {
 		"build": "pnpm run build:action",
-		"build:action": "tsc --project tsconfig.build.json && ncc build dist/action/action-main.js -o dist/action --no-source-map-register --license licenses.txt",
+		"build:action": "tsc --project tsconfig.build.json && node scripts/build-action.mjs",
 		"check": "biome check src package.json tsconfig.json tsconfig.build.json && tsc --noEmit",
 		"test": "vitest run"
 	},
@@ -45,18 +45,18 @@
 		"@biomejs/biome": "^2.5.8",
 		"@types/node": "^26.2.0",
 		"@types/picomatch": "^4.0.3",
-		"@vercel/ncc": "^0.45.0",
 		"ajv": "^8.20.0",
+		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/nlecoy/standards.git"
+		"url": "git+https://github.com/getstandards/standards.git"
 	},
 	"license": "MIT",
 	"bugs": {
-		"url": "https://github.com/nlecoy/standards/issues"
+		"url": "https://github.com/getstandards/standards/issues"
 	},
 	"engines": {
 		"node": "^24.11.0",
