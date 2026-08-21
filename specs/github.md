@@ -130,6 +130,31 @@ At least one provider credential must resolve, through a key input or a
 variable named in `provider-env`; [Run behavior](#run-behavior) defines what
 happens when none does.
 
+## Outputs
+
+The action sets outputs that later steps of the same job can read, for
+example in an `if:` condition or a notification step:
+
+| Output | Meaning |
+| --- | --- |
+| `conclusion` | The review conclusion: `compliant` or `non-compliant`. |
+| `blocking-count` | The number of confirmed `MUST` and `MUST NOT` findings. |
+| `warning-count` | The number of confirmed `SHOULD` and `SHOULD NOT` findings. |
+| `report-file` | The path of the JSON review report on the runner. |
+
+The report file carries the same JSON report as
+`standards review --format json`, defined in [Standards review](./review.md).
+The action writes it to the runner's temporary directory.
+
+The action sets the outputs only when it completes a review. A skipped fork
+run, a cancelled run, and a failed run set none, so a later step reads every
+output as an empty string. A step that gates on the review MUST therefore
+test for an explicit value, for example
+`if: steps.standards.outputs.conclusion == 'non-compliant'`.
+
+The counts cover confirmed findings only. A suppressed finding is not
+counted; it stays visible in the report.
+
 ## Run behavior
 
 One run reviews one pull request head:
@@ -399,4 +424,3 @@ This version does not define:
   pull request thread.
 - Reactions to, or deduplication against, comments from humans or other
   bots.
-- Action outputs for downstream workflow steps.

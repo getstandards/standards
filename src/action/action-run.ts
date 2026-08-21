@@ -1,3 +1,6 @@
+import { appendFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { Octokit } from "@octokit/rest";
 import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
 import { formatReviewFailure } from "../cli/commands/review.js";
@@ -150,6 +153,7 @@ export async function runAction(
 			renderSummaryComment(report.report, report.renderContext),
 			hasEntries,
 		);
+		await writeActionOutputs(report.report, environment);
 		return report.report.conclusion === "compliant" ? 0 : 1;
 	} catch (error) {
 		if (abortController.signal.aborted) {
@@ -188,6 +192,37 @@ export async function runAction(
 		process.removeListener("SIGINT", handleSignal);
 		process.removeListener("SIGTERM", handleSignal);
 	}
+}
+
+/**
+ * Write the action outputs for downstream workflow steps (specs/github.md).
+ *
+ * A run that did not complete a review writes none, so downstream steps read
+ * every output as an empty string.
+ */
+async function writeActionOutputs(
+	report: ReviewReport,
+	environment: NodeJS.ProcessEnv,
+): Promise<void> {
+	const outputPath = environment.GITHUB_OUTPUT;
+	if (outputPath === undefined || outputPath === "") {
+		return;
+	}
+	const reportFile = path.join(
+		environment.RUNNER_TEMP ?? os.tmpdir(),
+		"standards-report.json",
+	);
+	await writeFile(reportFile, `${JSON.stringify(report, undefined, "\t")}\n`);
+	const blockingCount = report.findings.filter(
+		(finding) => finding.level === "MUST" || finding.level === "MUST NOT",
+	).length;
+	const lines = [
+		`conclusion=${report.conclusion}`,
+		`blocking-count=${blockingCount}`,
+		`warning-count=${report.findings.length - blockingCount}`,
+		`report-file=${reportFile}`,
+	];
+	await appendFile(outputPath, `${lines.join("\n")}\n`);
 }
 
 /** The repository web URL the rendered report links into. */

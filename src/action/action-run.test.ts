@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai";
@@ -173,6 +174,8 @@ describe("runAction", () => {
 			...repository,
 			inputs: { "INPUT_ANTHROPIC-API-KEY": "test-key" },
 		});
+		environment.GITHUB_OUTPUT = path.join(repository.workspace, "output.txt");
+		environment.RUNNER_TEMP = repository.workspace;
 		const { github, requests } = mockGitHub([
 			{ id: 202, html_url: "https://github.com/acme/shop/runs/202" },
 			{},
@@ -215,6 +218,21 @@ describe("runAction", () => {
 		const comment = await requestBody(requests, 3);
 		expect(comment.body.startsWith(REPORT_COMMENT_MARKER)).toBe(true);
 		expect(comment.body).toContain(`blob/${repository.headSha}/invoice.ts#L1`);
+
+		const reportFile = path.join(repository.workspace, "standards-report.json");
+		const outputs = await readFile(environment.GITHUB_OUTPUT ?? "", "utf8");
+		expect(outputs).toBe(
+			[
+				"conclusion=non-compliant",
+				"blocking-count=1",
+				"warning-count=0",
+				`report-file=${reportFile}`,
+				"",
+			].join("\n"),
+		);
+		const report = JSON.parse(await readFile(reportFile, "utf8"));
+		expect(report.conclusion).toBe("non-compliant");
+		expect(report.findings).toHaveLength(1);
 	});
 
 	it("skips a fork pull request without credentials as neutral", async () => {
@@ -262,6 +280,7 @@ describe("runAction", () => {
 			headSha: "1111111111111111111111111111111111111111",
 			inputs: { "INPUT_ANTHROPIC-API-KEY": "test-key" },
 		});
+		environment.GITHUB_OUTPUT = path.join(repository.workspace, "output.txt");
 		const { github, requests } = mockGitHub([
 			{ id: 202, html_url: "https://github.com/acme/shop/runs/202" },
 			{},
@@ -281,5 +300,6 @@ describe("runAction", () => {
 		const comment = await requestBody(requests, 3);
 		expect(comment.body.startsWith(REPORT_COMMENT_MARKER)).toBe(true);
 		expect(comment.body).toContain("reports no conclusion");
+		expect(existsSync(environment.GITHUB_OUTPUT ?? "")).toBe(false);
 	});
 });

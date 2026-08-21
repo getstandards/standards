@@ -33,6 +33,20 @@ inputs:
       need a `model` input.
     required: false
 
+outputs:
+  conclusion:
+    description: >-
+      The review conclusion, `compliant` or `non-compliant`. Empty when the
+      run did not complete a review.
+  blocking-count:
+    description: "The number of confirmed MUST and MUST NOT findings."
+  warning-count:
+    description: "The number of confirmed SHOULD and SHOULD NOT findings."
+  report-file:
+    description: >-
+      The path of the JSON review report, in the same shape as
+      `standards review --format json`.
+
 runs:
   using: "node24"
   main: "dist/action/index.js"

@@ -4,6 +4,7 @@ Canonical words used across Standards code and documentation.
 
 ## Terms
 
+- **action output** — One value the action sets for later workflow steps: `conclusion`, `blocking-count`, `warning-count`, or `report-file`.
 - **annotation** — One check run mark on a confirmed finding's `path` and `lines`: `failure` for `MUST`/`MUST NOT`, `warning` otherwise.
 - **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files.
 - **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion, the report, and the annotations.
