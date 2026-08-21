@@ -1,0 +1,80 @@
+{
+	"name": "@getstandards/standards",
+	"version": "0.0.1",
+	"description": "Standards turns your engineering rules into code an agent can enforce on every pull request",
+	"type": "module",
+	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
+	"publishConfig": {
+		"access": "public"
+	},
+	"bin": {
+		"standards": "./dist/cli/index.js"
+	},
+	"exports": {
+		".": "./dist/cli/index.js",
+		"./schemas/v1/standards.schema.json": "./schemas/v1/standards.schema.json",
+		"./schemas/v1/standards-lock.schema.json": "./schemas/v1/standards-lock.schema.json",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "pnpm run build:action",
+		"build:action": "tsc --project tsconfig.build.json && node scripts/build-action.mjs",
+		"check": "biome check src package.json tsconfig.json tsconfig.build.json && tsc --noEmit",
+		"generate:schemas": "tsx scripts/generate-schemas.ts",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"standards",
+		"code-review",
+		"ai-code-review",
+		"rfc2119",
+		"linter",
+		"governance",
+		"policy-as-code",
+		"engineering-standards",
+		"pull-request",
+		"github-action",
+		"static-analysis",
+		"code-quality",
+		"llm",
+		"agent",
+		"yaml",
+		"compliance"
+	],
+	"dependencies": {
+		"@earendil-works/pi-ai": "^0.84.2",
+		"@inquirer/prompts": "^8.5.2",
+		"@octokit/rest": "^22.0.1",
+		"chalk": "^6.0.0",
+		"figures": "^6.1.0",
+		"picomatch": "^4.0.5",
+		"yaml": "^2.9.0",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.8",
+		"@types/node": "^26.2.0",
+		"@types/picomatch": "^4.0.3",
+		"ajv": "^8.20.0",
+		"esbuild": "^0.28.2",
+		"tsx": "^4.20.0",
+		"typescript": "^7.0.2",
+		"vitest": "^4.1.10"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/getstandards/standards.git"
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/getstandards/standards/issues"
+	},
+	"engines": {
+		"node": "^24.11.0",
+		"pnpm": "^11.0.0"
+	},
+	"files": [
+		"dist",
+		"schemas"
+	]
+}

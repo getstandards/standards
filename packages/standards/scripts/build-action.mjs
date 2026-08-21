@@ -11,7 +11,7 @@ await build({
 	platform: "node",
 	format: "esm",
 	target: "node24",
-	outfile: "dist/action/index.js",
+	outfile: "../../dist/action/index.js",
 	// Bundled CommonJS dependencies call `require`, which an ES module scope
 	// does not define.
 	banner: {

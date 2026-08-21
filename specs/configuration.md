@@ -374,10 +374,10 @@ the validation rules. Duplicate mapping keys MUST cause validation to fail.
 
 Version 1 has two JSON Schema Draft 2020-12 schemas:
 
-- [`standards.schema.json`](../schemas/v1/standards.schema.json) validates
+- [`standards.schema.json`](../packages/standards/schemas/v1/standards.schema.json) validates
   `.standards.yml` files and extended configuration files. Its canonical `$id`
   is `https://getstandards.dev/schemas/v1/standards.schema.json`.
-- [`standards-lock.schema.json`](../schemas/v1/standards-lock.schema.json)
+- [`standards-lock.schema.json`](../packages/standards/schemas/v1/standards-lock.schema.json)
   validates `.standards.lock` files. Its canonical `$id` is
   `https://getstandards.dev/schemas/v1/standards-lock.schema.json`.
 

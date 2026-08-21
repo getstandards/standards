@@ -1,0 +1,25 @@
+---
+title: JSON Schemas
+description: The JSON Schema files that describe the Standards configuration and lock file formats.
+---
+
+The JSON Schema files ship with the `@getstandards/standards` package and are
+served from the canonical URLs below. Editors and tools can use them for
+validation and completion.
+
+## Standards configuration
+
+Describes the `.standards.yml` configuration format.
+
+[standards.schema.json](https://getstandards.dev/schemas/v1/standards.schema.json)
+
+## Standards lock file
+
+Describes the `.standards.lock` lock file format.
+
+[standards-lock.schema.json](https://getstandards.dev/schemas/v1/standards-lock.schema.json)
+
+The schemas are generated from the Zod schemas in the package with
+`pnpm generate:schemas`. They are structural only: they describe the shape of
+the documents, while the semantic rules from the specifications live in the
+validation pipeline.

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://(?![^/]*@)"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tag"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "branch": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "branch"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$"
+          }
+        },
+        "required": [
+          "repository",
+          "revision",
+          "commit"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "sources"
+  ],
+  "additionalProperties": false,
+  "$id": "https://getstandards.dev/schemas/v1/standards-lock.schema.json",
+  "title": "Standards lock file",
+  "description": "Version 1 of the .standards.lock format."
+}

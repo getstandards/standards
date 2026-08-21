@@ -1,5 +1,5 @@
 ---
-# yaml-language-server: $schema=./schemas/v1/standards.schema.json
+# yaml-language-server: $schema=./packages/standards/schemas/v1/standards.schema.json
 version: 1
 rules:
   - id: clickhouse.ttl-only-drop-parts

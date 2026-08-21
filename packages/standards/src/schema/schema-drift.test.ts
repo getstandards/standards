@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { configurationSchema } from "../config/configuration-schema.js";
 import { lockfileSchema } from "../lockfile/lockfile-schema.js";
 import { readSchemaFile, type SchemaTarget } from "./schema-files.js";
+import { generateSchemaJson } from "./schema-generation.js";
 
 // The Zod schemas validate at runtime; the JSON Schemas ship for editors and
 // external tools. This suite runs the same fixtures through both so structural
@@ -249,4 +250,13 @@ describe("schema drift", () => {
 			}
 		});
 	}
+
+	describe("generated schema freshness", () => {
+		for (const target of ["config", "lock"] as const) {
+			it(`${target} schema is up to date`, async () => {
+				const committed = JSON.parse(await readSchemaFile(target));
+				expect(generateSchemaJson(target)).toEqual(committed);
+			});
+		}
+	});
 });

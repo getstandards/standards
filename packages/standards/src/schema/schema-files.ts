@@ -10,7 +10,8 @@ export const schemaTargets = ["config", "lock"] as const;
 /** A JSON Schema file that ships with Standards. */
 export type SchemaTarget = (typeof schemaTargets)[number];
 
-const SCHEMA_FILE_NAMES: Record<SchemaTarget, string> = {
+/** The JSON Schema file names that ship with Standards. */
+export const SCHEMA_FILE_NAMES: Record<SchemaTarget, string> = {
 	config: "standards.schema.json",
 	lock: "standards-lock.schema.json",
 };
