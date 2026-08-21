@@ -95,25 +95,37 @@ export async function runCli(
 		interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
 	};
 
-	switch (command) {
-		case "init":
-			return runInitCommand(context);
-		case "validate":
-			return runValidateCommand(context);
-		case "lock":
-			return runLockCommand(context);
-		case "review":
-			return runReviewCommand(
-				context,
-				review ?? { targets: [], all: false, format: "text", verbose: false },
-			);
-		case "cache":
-			return runCacheCommand(context, cacheSubcommand);
-		case "schema":
-			return runSchemaCommand(context, schemaTarget);
-		case "login":
-			return runLoginCommand(context, provider);
-		case "logout":
-			return runLogoutCommand(context, provider);
+	try {
+		// The commands are awaited, not returned, so their rejections reach
+		// this catch. A returned promise rejects outside the try block.
+		switch (command) {
+			case "init":
+				return await runInitCommand(context);
+			case "validate":
+				return await runValidateCommand(context);
+			case "lock":
+				return await runLockCommand(context);
+			case "review":
+				return await runReviewCommand(
+					context,
+					review ?? { targets: [], all: false, format: "text", verbose: false },
+				);
+			case "cache":
+				return await runCacheCommand(context, cacheSubcommand);
+			case "schema":
+				return await runSchemaCommand(context, schemaTarget);
+			case "login":
+				return await runLoginCommand(context, provider);
+			case "logout":
+				return await runLogoutCommand(context, provider);
+		}
+	} catch (error) {
+		// Inquirer rejects a prompt with an ExitPromptError when the user
+		// presses Ctrl+C. That deliberate stop is not a failure: exit with
+		// status 0 and no diagnostic (specs/cli.md general behavior).
+		if (error instanceof Error && error.name === "ExitPromptError") {
+			return 0;
+		}
+		throw error;
 	}
 }

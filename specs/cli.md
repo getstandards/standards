@@ -65,6 +65,9 @@ statuses:
 Every other command exits with status `0` on success and status `1` on any
 failure.
 
+The user can end any interactive prompt with Ctrl+C. The command MUST then
+stop at once, MUST NOT print a diagnostic, and MUST exit with status `0`.
+
 ## Options
 
 These options control the source cache defined in

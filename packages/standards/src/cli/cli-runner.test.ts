@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { select } from "@inquirer/prompts";
+import type { Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configurationSchema } from "../config/configuration-schema.js";
 import { loadLockfile } from "../lockfile/lockfile-loader.js";
 import { runGit } from "../utils/git.js";
@@ -9,6 +11,12 @@ import { parseSingleYamlDocument } from "../utils/yaml.js";
 import type { CliOutput } from "./cli-context.js";
 import { runCli } from "./cli-runner.js";
 import { VERSION } from "./version.js";
+
+vi.mock("@inquirer/prompts", () => ({
+	select: vi.fn(),
+}));
+
+const mockSelect = select as Mock;
 
 const temporaryDirectories: string[] = [];
 let previousXdgConfigHome: string | undefined;
@@ -193,6 +201,50 @@ Next action:
 		expect(exitStatus).toBe(1);
 		expect(stdout).toEqual([]);
 		expect(stderr[0]).toContain("already exists");
+	});
+
+	describe("prompt cancellation", () => {
+		// runCli only prompts on an interactive terminal, so these tests make
+		// stdin and stdout report a TTY.
+		beforeEach(() => {
+			for (const stream of [process.stdin, process.stdout]) {
+				Object.defineProperty(stream, "isTTY", {
+					configurable: true,
+					value: true,
+				});
+			}
+		});
+
+		afterEach(() => {
+			for (const stream of [process.stdin, process.stdout]) {
+				delete (stream as { isTTY?: boolean }).isTTY;
+			}
+		});
+
+		it("stops login quietly when the provider prompt is ended with Ctrl+C", async () => {
+			// The error inquirer rejects a prompt with on Ctrl+C.
+			mockSelect.mockRejectedValueOnce(
+				Object.assign(new Error("User force closed the prompt with SIGINT"), {
+					name: "ExitPromptError",
+				}),
+			);
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["login"], "/unused", output);
+
+			expect(exitStatus).toBe(0);
+			expect(stdout).toEqual([]);
+			expect(stderr).toEqual([]);
+		});
+
+		it("does not swallow prompt errors that are not cancellations", async () => {
+			mockSelect.mockRejectedValueOnce(new Error("prompt exploded"));
+			const { output } = captureOutput();
+
+			await expect(runCli(["login"], "/unused", output)).rejects.toThrow(
+				"prompt exploded",
+			);
+		});
 	});
 
 	it("prints the application version with --version", async () => {
