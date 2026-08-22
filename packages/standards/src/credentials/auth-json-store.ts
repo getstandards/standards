@@ -129,8 +129,8 @@ async function writeAuthDocument(
 }
 
 /**
- * Open the persistent `auth.json` credential store that `standards login` and
- * `standards logout` write, and that the pi AI SDK reads and refreshes.
+ * Open the persistent `auth.json` credential store that `standards auth login` and
+ * `standards auth logout` write, and that the pi AI SDK reads and refreshes.
  *
  * The store implements the SDK `CredentialStore` contract. It holds one entry
  * per SDK provider id. `modify` is the only write path and runs a serialized

@@ -16,8 +16,8 @@ every provider call needs a credential. Users hold credentials in three ways:
   an AWS profile or Google Application Default Credentials.
 
 This document specifies the credential sources and their precedence, the
-`login` and `logout` commands, credential storage, and the rules for
-automation.
+`auth login`, `auth logout`, and `auth status` commands, credential storage,
+and the rules for automation.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` in this
 document are to be interpreted as described by RFC 2119.
@@ -54,12 +54,12 @@ update add or change a provider without a second Standards registry change.
 For each provider, the implementation MUST let the SDK resolve a credential
 in this priority order:
 
-1. The stored credential that `standards login` saved for that provider.
+1. The stored credential that `standards auth login` saved for that provider.
 2. The provider's ambient credential sources, such as environment variables,
    credential files, profiles, and workload roles.
 
-A stored credential wins because `login` is an explicit user action on that
-machine. An environment variable that another tool needs MUST NOT silently
+A stored credential wins because `auth login` is an explicit user action on
+that machine. An environment variable that another tool needs MUST NOT silently
 override a subscription account that the user chose to use.
 
 A stored credential owns its provider. If it is invalid, has a type that the
@@ -107,9 +107,9 @@ flowchart TD
     K -- No --> M[Return a credential diagnostic]
 ```
 
-## `login`
+## `auth login`
 
-`standards login <provider>` stores a credential for one provider:
+`standards auth login <provider>` stores a credential for one provider:
 
 - When the provider has an OAuth method with `isSubscription` set to `true`,
   the command MUST call `models.login(provider, "oauth", interaction)`.
@@ -134,8 +134,8 @@ types. Standards MUST NOT assume one OAuth flow shape. An interrupt MUST
 cancel the SDK login operation. A failed or cancelled login MUST NOT replace
 the stored credential.
 
-`standards login` without a provider, or with an unknown provider, MUST print
-a diagnostic that lists the known providers and exit with status `1`. The
+`standards auth login` without a provider, or with an unknown provider, MUST
+print a diagnostic that lists the known providers and exit with status `1`. The
 command MUST NOT print the stored secret. On success it MUST report the
 provider and the credential kind, `oauth` or `api-key`, and exit with status
 `0`.
@@ -150,7 +150,7 @@ sequenceDiagram
     participant Provider as SDK provider
     participant Store as Credential store
 
-    User->>CLI: standards login provider
+    User->>CLI: standards auth login provider
     CLI->>SDK: login(provider, type, interaction)
     SDK->>Provider: Run the selected login method
     loop Provider interaction
@@ -166,16 +166,39 @@ sequenceDiagram
     CLI-->>User: Provider and credential kind
 ```
 
-## `logout`
+## `auth logout`
 
-`standards logout <provider>` MUST use the credential store metadata to check
-the current state. It MUST then call `models.logout(provider)` when a
+`standards auth logout <provider>` MUST use the credential store metadata to
+check the current state. It MUST then call `models.logout(provider)` when a
 credential exists. It MUST report the removal. When no credential is stored
 for that provider, it MUST report that state. Both cases exit with status
 `0`.
 
-A `login` or `logout` command MUST NOT modify the configuration, the lock
-file, or any other repository file.
+An `auth` command MUST NOT modify the configuration, the lock file, or any
+other repository file.
+
+## `auth status`
+
+`standards auth status` reports which providers have a usable credential and
+where each credential comes from. It MUST read the credential state from two
+sources and nothing else:
+
+- The credential store metadata, through `list`, which names the providers
+  that `auth login` saved a credential for. `list` MUST NOT resolve or return
+  a secret, so the report never holds one.
+- The SDK `checkAuth` operation, which decides whether the credential is
+  usable and names its source.
+
+A provider that `checkAuth` reports as usable and that the store metadata
+names is `stored`; a provider that `checkAuth` reports as usable and that the
+metadata does not name holds an ambient credential and is `environment`. A
+provider that `checkAuth` reports as unusable has no usable credential, even
+when a credential is stored for it: a stored credential owns its provider and
+MUST NOT fall back to an ambient one.
+
+The command MUST NOT run a login flow, refresh an OAuth token, or write a
+credential. The output MUST NOT contain a credential. Its output and exit
+statuses are defined in [Standards CLI](./cli.md).
 
 ## Credential storage
 

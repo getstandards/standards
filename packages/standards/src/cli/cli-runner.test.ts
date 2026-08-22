@@ -221,7 +221,7 @@ Next action:
 			}
 		});
 
-		it("stops login quietly when the provider prompt is ended with Ctrl+C", async () => {
+		it("stops auth login quietly when the provider prompt is ended with Ctrl+C", async () => {
 			// The error inquirer rejects a prompt with on Ctrl+C.
 			mockSelect.mockRejectedValueOnce(
 				Object.assign(new Error("User force closed the prompt with SIGINT"), {
@@ -230,7 +230,7 @@ Next action:
 			);
 			const { output, stdout, stderr } = captureOutput();
 
-			const exitStatus = await runCli(["login"], "/unused", output);
+			const exitStatus = await runCli(["auth", "login"], "/unused", output);
 
 			expect(exitStatus).toBe(0);
 			expect(stdout).toEqual([]);
@@ -241,9 +241,9 @@ Next action:
 			mockSelect.mockRejectedValueOnce(new Error("prompt exploded"));
 			const { output } = captureOutput();
 
-			await expect(runCli(["login"], "/unused", output)).rejects.toThrow(
-				"prompt exploded",
-			);
+			await expect(
+				runCli(["auth", "login"], "/unused", output),
+			).rejects.toThrow("prompt exploded");
 		});
 	});
 
@@ -345,6 +345,156 @@ Next action:
 		expect(stdout[0]).toContain(`Standards ${VERSION}`);
 		expect(stdout[0]).toContain("█");
 		expect(stderr).toEqual([]);
+	});
+
+	it("lists auth and models as single commands in root help", async () => {
+		const { output, stdout } = captureOutput();
+
+		await runCli([], "/unused", output);
+
+		expect(stdout[0]).toContain("auth");
+		expect(stdout[0]).toContain("models [provider]");
+		expect(stdout[0]).not.toContain(
+			"Remove a stored model provider credential",
+		);
+		expect(stdout[0]).not.toContain("usable credential");
+	});
+
+	describe("auth", () => {
+		it("prints auth help without a subcommand", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["auth"], "/unused", output);
+
+			expect(exitStatus).toBe(0);
+			expect(stderr).toEqual([]);
+			expect(stdout[0]).toContain("Usage: standards auth <subcommand>");
+			expect(stdout[0]).toContain("login <provider>");
+			expect(stdout[0]).toContain("logout <provider>");
+			expect(stdout[0]).toContain("status");
+		});
+
+		it("prints auth help for auth --help", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["auth", "--help"], "/unused", output);
+
+			expect(exitStatus).toBe(0);
+			expect(stderr).toEqual([]);
+			expect(stdout[0]).toContain("Usage: standards auth <subcommand>");
+		});
+
+		it("rejects an unknown auth subcommand", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["auth", "whoami"], "/unused", output);
+
+			expect(exitStatus).toBe(1);
+			expect(stderr[0]).toContain("Unknown command 'auth whoami'.");
+		});
+
+		it("rejects a provider argument on auth status", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["auth", "status", "anthropic"],
+				"/unused",
+				output,
+			);
+
+			expect(exitStatus).toBe(1);
+			expect(stderr[0]).toContain(
+				"Command 'auth status' does not accept arguments or options.",
+			);
+		});
+
+		it("rejects the removed top-level login and logout commands", async () => {
+			for (const command of ["login", "logout"]) {
+				const { output, stdout, stderr } = captureOutput();
+
+				const exitStatus = await runCli([command], "/unused", output);
+
+				expect(exitStatus).toBe(1);
+				expect(stdout).toEqual([]);
+				expect(stderr[0]).toContain(`Unknown command '${command}'.`);
+			}
+		});
+
+		it("routes auth status to the credential report", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["auth", "status"], "/unused", output);
+
+			// The temporary XDG_CONFIG_HOME holds no auth.json, so nothing is
+			// stored; the ambient environment decides the rest.
+			expect([0, 1]).toContain(exitStatus);
+			expect(stderr).toEqual([]);
+			expect(stdout[0]).toContain("credential");
+		});
+	});
+
+	describe("models", () => {
+		it("prints models help for models --help", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["models", "--help"], "/unused", output);
+
+			expect(exitStatus).toBe(0);
+			expect(stderr).toEqual([]);
+			expect(stdout[0]).toContain(
+				"Usage: standards models [options] [provider]",
+			);
+			expect(stdout[0]).toContain("--all");
+		});
+
+		it("accepts --all, which review also accepts", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["models", "--all"], "/unused", output);
+
+			expect(exitStatus).toBe(0);
+			expect(stderr).toEqual([]);
+			expect(stdout[0]).toContain("providers have a usable credential.");
+		});
+
+		it("rejects the review options that models does not accept", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["models", "--verbose"],
+				"/unused",
+				output,
+			);
+
+			expect(exitStatus).toBe(1);
+			expect(stderr[0]).toContain(
+				"Command 'models' does not accept the '--verbose' option.",
+			);
+		});
+
+		it("rejects more than one provider argument", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["models", "anthropic", "openai"],
+				"/unused",
+				output,
+			);
+
+			expect(exitStatus).toBe(1);
+			expect(stderr[0]).toContain(
+				"Command 'models' accepts at most one provider argument.",
+			);
+		});
+
+		it("prints the known providers for an unknown provider", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(["models", "bogus"], "/unused", output);
+
+			expect(exitStatus).toBe(1);
+			expect(stderr[0]).toContain("Unknown provider 'bogus'.");
+		});
 	});
 
 	it("rejects unknown commands", async () => {

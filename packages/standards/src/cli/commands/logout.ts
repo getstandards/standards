@@ -4,7 +4,7 @@ import { createStandardsModels } from "../../credentials/models-runtime.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatKnownProvidersDiagnostic } from "./known-providers-diagnostic.js";
 
-/** Remove a stored model provider credential from the `standards logout` command. */
+/** Remove a stored model provider credential from the `standards auth logout` command. */
 export async function runLogoutCommand(
 	context: CommandContext,
 	provider: string | undefined,
@@ -15,7 +15,11 @@ export async function runLogoutCommand(
 
 	if (provider === undefined || models.getProvider(provider) === undefined) {
 		context.output.error(
-			formatKnownProvidersDiagnostic("logout", provider, models.getProviders()),
+			formatKnownProvidersDiagnostic(
+				"auth logout",
+				provider,
+				models.getProviders(),
+			),
 		);
 		return 1;
 	}

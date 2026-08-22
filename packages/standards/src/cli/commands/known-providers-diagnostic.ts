@@ -1,12 +1,15 @@
 import type { Provider } from "@earendil-works/pi-ai";
 
 /**
- * Format the diagnostic shown when `standards login` or `standards logout` runs
- * without a provider or with an unknown provider. It lists the known provider
- * ids so the user can pick a valid one.
+ * Format the diagnostic shown when a command runs without a provider or with
+ * an unknown provider. It lists the known provider ids so the user can pick a
+ * valid one.
+ *
+ * `command` is the complete command name after `standards`, such as
+ * `auth login`, so the next action is a line the user can run as it is.
  */
 export function formatKnownProvidersDiagnostic(
-	command: "login" | "logout",
+	command: "auth login" | "auth logout" | "models",
 	provider: string | undefined,
 	providers: readonly Provider[],
 ): string {

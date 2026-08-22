@@ -5,8 +5,9 @@ Defines the command-line interface for Standards.
 ## Purpose
 
 The Standards CLI lets users create a Standards configuration, validate,
-resolve, list, and test its rules, update its lock file, store model provider
-credentials, and review changes from a terminal or automation environment.
+resolve, list, and test its rules, update its lock file, manage model provider
+credentials, list the usable model references, and review changes from a
+terminal or automation environment.
 
 The CLI implementation MUST be defined in `src/cli`.
 
@@ -24,8 +25,8 @@ The executable name is `standards`. It provides these commands:
 | `standards test` | Run rule tests against the resolved rule set. | Planned. Specified in [Standards rule tests](./testing.md). |
 | `standards cache` | Manage the source cache. Groups the `clean` and `prune` subcommands. | Planned. |
 | `standards schema [config\|lock]` | Print a bundled JSON Schema to standard output. | Implemented. |
-| `standards login <provider>` | Store a credential for a model provider. | Planned. |
-| `standards logout <provider>` | Remove the stored credential for a model provider. | Planned. |
+| `standards auth` | Manage model provider credentials. Groups the `login`, `logout`, and `status` subcommands. | Implemented. |
+| `standards models [provider]` | List the model references that the configured providers make usable. | Implemented. |
 
 `init` reserves its command name.
 
@@ -34,8 +35,9 @@ The executable name is `standards`. It provides these commands:
 Running `standards` without a command or with `--help` or `-h` MUST print help
 to standard output and exit with status `0`. Root help MUST open with a banner
 that shows the Standards logo and the application version. It MUST list
-`cache` as a single command. It MUST NOT list the `cache` subcommands;
-`standards cache --help` prints them. Running `standards --version` MUST print
+`cache` and `auth` as single commands. It MUST NOT list their subcommands;
+`standards cache --help` and `standards auth --help` print them. Running
+`standards --version` MUST print
 the application version to standard output and exit with status `0`. The
 banner and the version are the only output that carries the logo; every other
 command writes plain text, so machine-readable output stays clean.
@@ -44,22 +46,22 @@ An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
 
 A command accepts only the positional arguments and options listed for it in
-this specification. No command other than `cache`, `schema`, `login`,
-`logout`, and `review` accepts a positional argument. Supplying an argument or
-option that a command does not accept MUST print a diagnostic to standard error
-and exit with the command's error status defined below.
+this specification. No command other than `cache`, `schema`, `auth`, `models`,
+and `review` accepts a positional argument. Supplying an argument or option
+that a command does not accept MUST print a diagnostic to standard error and
+exit with the command's error status defined below.
 
 ### Exit statuses
 
-`review`, `test`, and `lock --check` are checking commands: their result can
-be negative even though the command ran completely. Automation must separate
-a negative result from a broken run, so a checking command MUST use three
-statuses:
+`review`, `test`, `lock --check`, and `auth status` are checking commands:
+their result can be negative even though the command ran completely.
+Automation must separate a negative result from a broken run, so a checking
+command MUST use three statuses:
 
 | Status | Meaning |
 | --- | --- |
-| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, an up-to-date lock file. |
-| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, a stale lock entry. |
+| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, an up-to-date lock file, at least one usable credential. |
+| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, a stale lock entry, no usable credential. |
 | `2` | The command could not run or complete: invalid arguments, invalid configuration, a missing credential, or a provider failure. |
 
 Every other command exits with status `0` on success and status `1` on any
@@ -105,7 +107,7 @@ These options control command input and output:
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
 | `--base <revision>` | Review the change since `<revision>` instead of the default base. | `review` |
-| `--all` | Run a full review: review every tracked file of the head revision. | `review` |
+| `--all` | Run a full review: review every tracked file of the head revision. For `models`, list every known provider and every model id. | `review`, `models` |
 | `--format <format>` | Output format: `text` (default) or `json`. | `review`, `rules` |
 | `--verbose` | Print detailed review progress to standard error. | `review` |
 
@@ -387,10 +389,20 @@ exit with status `1`. The command MUST NOT read the configuration, the lock
 file, the source cache, or the settings file, so it MUST NOT accept the
 `--cache-dir` or `--no-cache` option.
 
-## `login`
+## `auth`
 
-`standards login <provider>` stores a credential for one model provider, as
-specified in [Standards provider credentials](./credentials.md). For a
+`standards auth` groups the credential subcommands, as `cache` groups its own.
+Running `standards auth` without a subcommand, or with `--help` or `-h`, MUST
+print the `auth` help text, which lists the `login`, `logout`, and `status`
+subcommands, to standard output and exit with status `0`.
+
+An `auth` subcommand MUST NOT modify the configuration, the lock file, or any
+other repository file.
+
+### `auth login`
+
+`standards auth login <provider>` stores a credential for one model provider,
+as specified in [Standards provider credentials](./credentials.md). For a
 provider with subscription support, it runs the provider's OAuth flow. For
 other providers, it runs the interactive authentication method that the
 provider SDK defines. This method can request an API key or provider values
@@ -400,17 +412,85 @@ value.
 On success, the command MUST report the provider and the credential kind and
 exit with status `0`. It MUST NOT print the stored secret.
 
-Running `standards login` without a provider, or with an unknown provider,
-MUST print a diagnostic that lists the known providers to standard error and
-exit with status `1`. On an interactive terminal, `standards login` without a
-provider MAY instead prompt the user to choose from the known providers and
-continue with that choice.
+Running `standards auth login` without a provider, or with an unknown
+provider, MUST print a diagnostic that lists the known providers to standard
+error and exit with status `1`. On an interactive terminal,
+`standards auth login` without a provider MAY instead prompt the user to
+choose from the known providers and continue with that choice.
 
-## `logout`
+### `auth logout`
 
-`standards logout <provider>` MUST remove the stored credential for that
+`standards auth logout <provider>` MUST remove the stored credential for that
 provider and report the removal. When no credential is stored for that
 provider, it MUST report that state. Both cases exit with status `0`.
 
-A `login` or `logout` command MUST NOT modify the configuration, the lock
-file, or any other repository file.
+### `auth status`
+
+`standards auth status` reports the credential state of each model provider.
+The command is read only: it MUST NOT modify the configuration, the lock file,
+or any credential.
+
+For each provider with a usable credential, the command MUST print one line
+with the provider id, the credential state, and its source:
+
+- `stored`, with the credential kind, for a credential that
+  `standards auth login` saved in `auth.json`.
+- `environment`, with the source that the provider SDK names, for an ambient
+  credential.
+
+The state comes from the credential store metadata and the SDK `checkAuth`
+operation, as defined in
+[Standards provider credentials](./credentials.md). Providers without a usable
+credential MUST NOT be listed. A footer MUST state the count of providers with
+a usable credential and the count of known providers. When no provider has a
+usable credential, the command MUST print a message that names
+`standards auth login <provider>` as the next action.
+
+The credential check is best effort per provider: a provider whose check fails
+MUST NOT stop the command, and the command MUST report that its state is
+unknown rather than report it as having no credential. The line for that
+provider MUST name the problem that the check reported.
+
+As a checking command, `auth status` MUST use three exit statuses: `0` when at
+least one provider has a usable credential, `1` when the command ran
+completely and no provider has one, and `2` when the command could not run or
+complete.
+
+## `models`
+
+`standards models [provider]` lists model references, grouped by provider, so
+that a user can see which models the configured credentials make usable. Every
+model line MUST be a complete `<provider>/<model>` reference that the user can
+pass to `--model` without edits. The command is read only.
+
+By default the command MUST list only the providers with a usable credential,
+with the models that the SDK reports as available for each. Each provider
+heading MUST show the credential state in the `auth status` format. The
+provider's default model, defined in [Standards review](./review.md), MUST be
+marked `(default)`.
+
+The default view SHOULD hide a model whose id is another listed model's id plus
+a release date suffix, for example `claude-haiku-4-5-20251001` when
+`claude-haiku-4-5` is listed. The moving alias is the reference a user should
+pass. `--all` MUST show every id without this filter.
+
+A footer MUST state the count of providers with a usable credential and the
+count of known providers, and MUST name `standards models --all` and
+`standards auth login <provider>` as next actions.
+
+The `[provider]` argument scopes the output to one provider. A provider without
+a usable credential MUST show its complete catalog and a
+`standards auth login <provider>` hint. An unknown provider MUST print the
+diagnostic that lists the known providers and exit with status `1`.
+
+`--all` MUST list every known provider with its credential state and its
+complete catalog, credentialed or not.
+
+An auth check or catalog failure for one provider MUST print a note under that
+provider, and the command MUST continue with the other providers. When no
+provider has a usable credential, the default view MUST print the next-action
+guidance and exit with status `0`; `auth status` is the command that signals
+this state through its exit status.
+
+`models` is not a checking command: it exits with status `0` on success and
+status `1` on any failure.

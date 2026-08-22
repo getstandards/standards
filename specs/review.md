@@ -28,7 +28,7 @@ selects its model. It does not specify:
 
 - The configuration format, the lock file, or resolution.
   [Standards configuration format](./configuration.md) defines them.
-- Provider credentials and the `login` and `logout` commands.
+- Provider credentials and the `auth` commands.
   [Standards provider credentials](./credentials.md) defines them.
 - The settings file that stores personal defaults, including model defaults.
   [Standards settings](./settings.md) defines it.
@@ -166,11 +166,13 @@ Fallback 7 MUST be unambiguous:
 - When exactly one provider has a usable credential, the step uses that
   provider's default model.
 - When no provider has a usable credential, the review MUST fail with a
-  diagnostic that names the credential sources: `standards login` or a
-  provider API key environment variable.
+  diagnostic that names the credential sources, `standards auth login` or a
+  provider API key environment variable, and names `standards models` as the
+  command that lists the usable model references.
 - When more than one provider has a usable credential, the review MUST fail
-  with a diagnostic that lists those providers and asks for an explicit
-  selection. The implementation MUST NOT pick one silently.
+  with a diagnostic that lists those providers, asks for an explicit
+  selection, and names `standards models`. The implementation MUST NOT pick
+  one silently.
 
 Verification overrides evaluation, so a finding is only as trustworthy as the
 verifier. The verification model SHOULD NOT be weaker than the evaluation

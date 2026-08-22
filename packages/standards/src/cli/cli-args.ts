@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { z } from "zod/v4";
 import { schemaTargets } from "../schema/schema-files.js";
 import { errorMessage } from "../utils/errors.js";
+import { renderCommandHelp } from "./cli-help.js";
 
 export const cliCommandSchema = z.enum([
 	"init",
@@ -10,8 +11,8 @@ export const cliCommandSchema = z.enum([
 	"review",
 	"cache",
 	"schema",
-	"login",
-	"logout",
+	"auth",
+	"models",
 ]);
 
 export type CliCommand = z.infer<typeof cliCommandSchema>;
@@ -19,6 +20,10 @@ export type CliCommand = z.infer<typeof cliCommandSchema>;
 export const cacheSubcommandSchema = z.enum(["clean", "prune"]);
 
 export type CacheSubcommand = z.infer<typeof cacheSubcommandSchema>;
+
+export const authSubcommandSchema = z.enum(["login", "logout", "status"]);
+
+export type AuthSubcommand = z.infer<typeof authSubcommandSchema>;
 
 export const schemaTargetSchema = z.enum(schemaTargets);
 
@@ -34,8 +39,16 @@ const REVIEW_ERROR_STATUS = 2;
 /** Commands that read from or write to the persistent source cache. */
 const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "lock", "review"];
 
-/** Commands that take one optional model provider argument. */
-const PROVIDER_COMMANDS: CliCommand[] = ["login", "logout"];
+/** The `auth` subcommands that take one optional model provider argument. */
+const PROVIDER_AUTH_SUBCOMMANDS: AuthSubcommand[] = ["login", "logout"];
+
+/** Validated arguments and options of the `standards models` command. */
+export interface ModelsCliArgs {
+	/** Scope the listing to this provider id, credentialed or not. */
+	provider?: string;
+	/** List every known provider and every model id, without the alias filter. */
+	all: boolean;
+}
 
 /** Validated arguments and options of the `standards review` command. */
 export interface ReviewCliArgs {
@@ -54,9 +67,11 @@ export interface ReviewCliArgs {
 export interface ParsedCliArgs {
 	command?: CliCommand;
 	cacheSubcommand?: CacheSubcommand;
+	authSubcommand?: AuthSubcommand;
 	schemaTarget?: SchemaTarget;
 	provider?: string;
 	review?: ReviewCliArgs;
+	models?: ModelsCliArgs;
 	cacheDir?: string;
 	noCache: boolean;
 	help: boolean;
@@ -151,21 +166,29 @@ export function parseCliArgs(
 	};
 
 	if (help) {
-		if (parsedCommand === "cache") {
-			return { command: "cache", cacheDir, noCache: false, help: true };
+		// A command accepts '--help' exactly when it has a help text to print.
+		if (renderCommandHelp(parsedCommand) === undefined) {
+			throw new CliArgumentError(
+				`Command '${parsedCommand}' does not accept the '--help' option.`,
+			);
 		}
-		if (parsedCommand === "review") {
-			return { command: "review", cacheDir, noCache: false, help: true };
-		}
-		throw new CliArgumentError(
-			`Command '${parsedCommand}' does not accept the '--help' option.`,
-		);
+		return { command: parsedCommand, cacheDir, noCache: false, help: true };
 	}
 
 	if (parsedCommand === "review") {
 		return parseReviewCommand(
 			commandArguments,
 			reviewValues,
+			cacheDir,
+			noCache,
+		);
+	}
+
+	if (parsedCommand === "models") {
+		rejectReviewOnlyOptions(parsedCommand, reviewValues, ["--all"]);
+		return parseModelsCommand(
+			commandArguments,
+			reviewValues.all,
 			cacheDir,
 			noCache,
 		);
@@ -180,13 +203,8 @@ export function parseCliArgs(
 		return parseSchemaCommand(commandArguments, cacheDir, noCache);
 	}
 
-	if (PROVIDER_COMMANDS.includes(parsedCommand)) {
-		return parseProviderCommand(
-			parsedCommand,
-			commandArguments,
-			cacheDir,
-			noCache,
-		);
+	if (parsedCommand === "auth") {
+		return parseAuthCommand(commandArguments, cacheDir, noCache);
 	}
 
 	if (commandArguments.length > 0) {
@@ -222,10 +240,16 @@ interface ReviewOptionValues {
 	verificationModel?: string;
 }
 
-/** Reject the options that only the `review` command accepts. */
+/**
+ * Reject the options that only the `review` command accepts.
+ *
+ * `accepted` names the review options that this command shares with `review`;
+ * `models` shares `--all`.
+ */
 function rejectReviewOnlyOptions(
 	command: CliCommand,
 	values: ReviewOptionValues,
+	accepted: readonly string[] = [],
 ): void {
 	const givenOptions: [string, boolean][] = [
 		["--base", values.base !== undefined],
@@ -236,7 +260,9 @@ function rejectReviewOnlyOptions(
 		["--evaluation-model", values.evaluationModel !== undefined],
 		["--verification-model", values.verificationModel !== undefined],
 	];
-	const given = givenOptions.find(([, isGiven]) => isGiven);
+	const given = givenOptions.find(
+		([name, isGiven]) => isGiven && !accepted.includes(name),
+	);
 	if (given !== undefined) {
 		throw new CliArgumentError(
 			`Command '${command}' does not accept the '${given[0]}' option.`,
@@ -282,13 +308,12 @@ function parseReviewCommand(
 	};
 }
 
-/** Parse the arguments and options of the `login` and `logout` commands. */
-function parseProviderCommand(
-	command: CliCommand,
-	commandArguments: string[],
+/** Reject the source cache options on a command that never reads the cache. */
+function rejectCacheOptions(
+	command: string,
 	cacheDir: string | undefined,
 	noCache: boolean,
-): ParsedCliArgs {
+): void {
 	if (cacheDir !== undefined) {
 		throw new CliArgumentError(
 			`Command '${command}' does not accept the '--cache-dir' option.`,
@@ -299,18 +324,67 @@ function parseProviderCommand(
 			`Command '${command}' does not accept the '--no-cache' option.`,
 		);
 	}
+}
 
-	const [provider, ...rest] = commandArguments;
-	if (rest.length > 0) {
+/** Parse the subcommand and provider of the `auth` command group (specs/cli.md auth). */
+function parseAuthCommand(
+	commandArguments: string[],
+	cacheDir: string | undefined,
+	noCache: boolean,
+): ParsedCliArgs {
+	rejectCacheOptions("auth", cacheDir, noCache);
+
+	const [subcommand, provider, ...rest] = commandArguments;
+	if (subcommand === undefined) {
+		return { command: "auth", noCache: false, help: false };
+	}
+
+	const subcommandResult = authSubcommandSchema.safeParse(subcommand);
+	if (!subcommandResult.success) {
+		throw new CliArgumentError(`Unknown command 'auth ${subcommand}'.`);
+	}
+	const parsedSubcommand = subcommandResult.data;
+
+	if (PROVIDER_AUTH_SUBCOMMANDS.includes(parsedSubcommand)) {
+		if (rest.length > 0) {
+			throw new CliArgumentError(
+				`Command 'auth ${parsedSubcommand}' accepts at most one provider argument.`,
+			);
+		}
+	} else if (provider !== undefined) {
 		throw new CliArgumentError(
-			`Command '${command}' accepts at most one provider argument.`,
+			`Command 'auth ${parsedSubcommand}' does not accept arguments or options.`,
 		);
 	}
 
 	return {
-		command,
+		command: "auth",
+		authSubcommand: parsedSubcommand,
 		provider,
-		cacheDir: undefined,
+		noCache: false,
+		help: false,
+	};
+}
+
+/** Parse the provider argument and `--all` option of the `models` command. */
+function parseModelsCommand(
+	commandArguments: string[],
+	all: boolean,
+	cacheDir: string | undefined,
+	noCache: boolean,
+): ParsedCliArgs {
+	rejectCacheOptions("models", cacheDir, noCache);
+
+	const [provider, ...rest] = commandArguments;
+	if (rest.length > 0) {
+		throw new CliArgumentError(
+			"Command 'models' accepts at most one provider argument.",
+		);
+	}
+
+	return {
+		command: "models",
+		models: { provider, all },
 		noCache: false,
 		help: false,
 	};
