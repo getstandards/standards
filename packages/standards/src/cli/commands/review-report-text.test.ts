@@ -15,8 +15,24 @@ function reportWith(overrides: Partial<ReviewReport>): ReviewReport {
 		models: { evaluation: model, verification: model },
 		counts: { resolved_rules: 2, selected_rules: 0, evaluation_tasks: 0 },
 		usage: {
-			evaluation: { invocations: 0, input_tokens: 0, output_tokens: 0 },
-			verification: { invocations: 0, input_tokens: 0, output_tokens: 0 },
+			evaluation: {
+				invocations: 0,
+				input_tokens: 0,
+				cache_read_tokens: 0,
+				cache_write_tokens: 0,
+				output_tokens: 0,
+				cost: 0,
+			},
+			verification: {
+				invocations: 0,
+				input_tokens: 0,
+				cache_read_tokens: 0,
+				cache_write_tokens: 0,
+				output_tokens: 0,
+				cost: 0,
+			},
+			total_cost: 0,
+			cost_basis: "charged",
 		},
 		findings: [],
 		suppressed: [],
@@ -36,8 +52,9 @@ describe("renderReviewReportText", () => {
   Selected rules:      0
   Evaluation tasks:    0
   Findings:            none
-  Evaluation usage:    0 invocations, 0 input tokens, 0 output tokens
-  Verification usage:  0 invocations, 0 input tokens, 0 output tokens`,
+  Evaluation usage:    0 invocations, 0 input tokens, 0 output tokens, $0.0000
+  Verification usage:  0 invocations, 0 input tokens, 0 output tokens, $0.0000
+  Total cost:          $0.0000`,
 		);
 	});
 
@@ -46,8 +63,24 @@ describe("renderReviewReportText", () => {
 			conclusion: "non-compliant",
 			counts: { resolved_rules: 2, selected_rules: 1, evaluation_tasks: 1 },
 			usage: {
-				evaluation: { invocations: 1, input_tokens: 500, output_tokens: 40 },
-				verification: { invocations: 1, input_tokens: 200, output_tokens: 10 },
+				evaluation: {
+					invocations: 1,
+					input_tokens: 500,
+					cache_read_tokens: 0,
+					cache_write_tokens: 0,
+					output_tokens: 40,
+					cost: 0.0421,
+				},
+				verification: {
+					invocations: 1,
+					input_tokens: 200,
+					cache_read_tokens: 0,
+					cache_write_tokens: 0,
+					output_tokens: 10,
+					cost: 0.0102,
+				},
+				total_cost: 0.0523,
+				cost_basis: "list_price_estimate",
 			},
 			findings: [
 				{
@@ -72,8 +105,9 @@ describe("renderReviewReportText", () => {
   Selected rules:      1
   Evaluation tasks:    1
   Findings:            MUST NOT: 1
-  Evaluation usage:    1 invocations, 500 input tokens, 40 output tokens
-  Verification usage:  1 invocations, 200 input tokens, 10 output tokens
+  Evaluation usage:    1 invocations, 500 input tokens, 40 output tokens, $0.0421
+  Verification usage:  1 invocations, 200 input tokens, 10 output tokens, $0.0102
+  Total cost:          $0.0523 (list price estimate, not a charge)
 
 Findings:
 

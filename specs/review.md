@@ -352,9 +352,25 @@ The report MUST include:
 - The provider and model that ran each agent step.
 - Counts: resolved rules, selected rules, evaluation tasks, and findings for each
   level.
-- Model usage for each agent step: the number of invocations and the input
-  and output token counts that the provider reported. The pipeline's goal is
-  minimum tokens; the report is where a user sees that goal met.
+- Model usage for each agent step: the number of invocations and the token
+  counts that the provider reported. `input_tokens` counts the uncached
+  input tokens; `cache_read_tokens` and `cache_write_tokens` count the input
+  tokens the provider served from and wrote to its cache. The pipeline's
+  goal is minimum tokens; the report is where a user sees that goal met.
+- The cost of the review in United States dollars: the `cost` of each agent
+  step and their sum as `total_cost`. The rates come from the provider
+  SDK's model catalog. The implementation MUST accumulate the SDK-computed
+  cost of each request as it finishes, and MUST NOT compute a cost from
+  summed token counts: request-wide pricing tiers apply per request, so a
+  cost computed from summed tokens could cross a tier threshold that no
+  single request crossed. A renderer MUST read `total_cost` and MUST NOT
+  recompute it, so the report and its renderings can never disagree.
+- The `cost_basis`, which states what the cost number means: `charged` for
+  an API key credential, `list_price_estimate` for a subscription
+  credential, and `none` when every selected model has a zero cost. One
+  review runs on one credential, so the field belongs to the review, not to
+  a step. A text surface MUST add a short note when the value is not
+  `charged`, so an estimate is never presented as a charge.
 - Each confirmed finding with its rule `id`, `level`, `path`, `lines`,
   `evidence`, `reason`, and the rule's `guidance` and `references` when
   present.
@@ -381,8 +397,24 @@ as one JSON document:
 		"evaluation_tasks": 3
 	},
 	"usage": {
-		"evaluation": { "invocations": 3, "input_tokens": 41200, "output_tokens": 1810 },
-		"verification": { "invocations": 2, "input_tokens": 3900, "output_tokens": 240 }
+		"evaluation": {
+			"invocations": 3,
+			"input_tokens": 41200,
+			"cache_read_tokens": 38400,
+			"cache_write_tokens": 2800,
+			"output_tokens": 1810,
+			"cost": 0.0421
+		},
+		"verification": {
+			"invocations": 2,
+			"input_tokens": 3900,
+			"cache_read_tokens": 0,
+			"cache_write_tokens": 0,
+			"output_tokens": 240,
+			"cost": 0.0102
+		},
+		"total_cost": 0.0523,
+		"cost_basis": "charged"
 	},
 	"findings": [
 		{
@@ -402,6 +434,12 @@ as one JSON document:
 ```
 
 - `version` is the report format version. This document specifies version 1.
+- `cost`, `total_cost`, and `cost_basis` are defined above. A cost is a JSON
+  number in United States dollars. The report MUST NOT hold a currency
+  symbol or a locale-formatted value, so a consumer can add and compare
+  costs. A text surface formats a cost with four decimal places, as
+  `$0.0523`, and shows `$0.0000` rather than `$0` for a cost that rounds to
+  zero.
 - `lines` is a two-element array: the first and last line of the finding.
 - `guidance` and `references` appear only when the rule defines them.
 - `suppressed` lists suppressed findings: the finding fields above plus the
@@ -491,6 +529,7 @@ This version does not define:
   provider SDK reads from its own environment variables.
 - Budgets, spend limits, and token ceilings: a task size limit, a bound on
   agent reads, a cap on agent turns, or a per-run token ceiling. The
-  report's usage counts show what a review spent. A later version MAY add
+  report's usage counts and cost show what a review spent; version 1
+  reports a cost, it does not cap one. A later version MAY add
   budgets as a new feature; a task that exceeds the model's context window
   fails the review as a provider failure until then.

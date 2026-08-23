@@ -139,7 +139,7 @@ export async function runEvaluation(
 	let usage = emptyStepUsage();
 	const findings: Finding[] = [];
 	for (const result of results) {
-		usage = addInvocationUsage(usage, result.tokens);
+		usage = addInvocationUsage(usage, result.usage);
 		findings.push(...result.output);
 	}
 	return { findings, usage };

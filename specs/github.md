@@ -141,6 +141,7 @@ example in an `if:` condition or a notification step:
 | `conclusion` | The review conclusion: `compliant` or `non-compliant`. |
 | `blocking-count` | The number of confirmed `MUST` and `MUST NOT` findings. |
 | `warning-count` | The number of confirmed `SHOULD` and `SHOULD NOT` findings. |
+| `total-cost` | The total cost of the review in United States dollars, with four decimal places, such as `0.0523`. The report's `cost_basis` states whether the value is a charge or an estimate. |
 | `report-file` | The path of the JSON review report on the runner. |
 
 The report file carries the same JSON report as
@@ -318,8 +319,11 @@ report data in this order. A section with no entries MUST NOT render:
    each marker's location and problem.
 6. A collapsed details block with the counts — resolved rules, selected
    rules, evaluation tasks, findings for each level — and the model,
-   invocation count, and token usage of each agent step. It states that
-   every reported finding was confirmed by verification.
+   invocation count, token usage, and cost of each agent step, with the
+   review's total cost as the usage table's last row. The row reads the
+   report's `total_cost`. A cost basis other than `charged` adds a short
+   note under the table. It states that every reported finding was
+   confirmed by verification.
 7. A footer that links the reviewed head commit and the merge base, so an
    updated comment shows which push it describes.
 
@@ -371,10 +375,11 @@ same layout with the compliant conclusion. Example:
 | ⚠️ SHOULD / SHOULD NOT | 1 |
 | 🔇 Suppressed | 1 |
 
-| Agent step | Model | Invocations | Input tokens | Output tokens |
-| --- | --- | ---: | ---: | ---: |
-| Evaluation | `anthropic/claude-sonnet-5` | 3 | 41,200 | 1,810 |
-| Verification | `anthropic/claude-opus-5` | 3 | 3,900 | 240 |
+| Agent step | Model | Invocations | Input tokens | Output tokens | Cost |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Evaluation | `anthropic/claude-sonnet-5` | 3 | 41,200 | 1,810 | $0.0421 |
+| Verification | `anthropic/claude-opus-5` | 3 | 3,900 | 240 | $0.0102 |
+| Total | | | | | $0.0523 |
 
 Every finding above was confirmed by an independent verification pass.
 Rejected findings are not shown.

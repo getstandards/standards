@@ -256,6 +256,7 @@ async function writeActionOutputs(
 		`conclusion=${report.conclusion}`,
 		`blocking-count=${blockingCount}`,
 		`warning-count=${report.findings.length - blockingCount}`,
+		`total-cost=${report.usage.total_cost.toFixed(4)}`,
 		`report-file=${reportFile}`,
 	];
 	await appendFile(outputPath, `${lines.join("\n")}\n`);

@@ -4,10 +4,14 @@ Canonical words used across Standards code and documentation.
 
 ## Terms
 
-- **action output** — One value the action sets for later workflow steps: `conclusion`, `blocking-count`, `warning-count`, or `report-file`.
+- **action output** — One value the action sets for later workflow steps: `conclusion`, `blocking-count`, `warning-count`, `total-cost`, or `report-file`.
 - **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files.
+- **cache read tokens** — The input tokens of a step that the provider served from its prompt cache, reported as `cache_read_tokens`.
+- **cache write tokens** — The input tokens of a step that the provider wrote to its prompt cache, reported as `cache_write_tokens`.
 - **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion and the report.
 - **configuration** — The validated `.standards.yml` document (`version`, `name`, `description`, `extends`, `rules`).
+- **cost** — The model spend of a review in United States dollars, computed by the provider SDK from its per-request rates. The report carries one `cost` per step and their sum as `total_cost`.
+- **cost basis** — What the review's cost number means: `charged` (an API key credential), `list_price_estimate` (a subscription credential), or `none` (every selected model has a zero cost).
 - **configuration graph** — The transitive graph of configuration files reached through `extends`, walked during resolution.
 - **diagnostic** — A structured, human-actionable error report with category, source, field, problem, and next action.
 - **entry file** — The `.standards.yml` at the repository root that starts resolution.

@@ -28,8 +28,24 @@ function exampleReport(): ReviewReport {
 		},
 		counts: { resolved_rules: 24, selected_rules: 6, evaluation_tasks: 3 },
 		usage: {
-			evaluation: { invocations: 3, input_tokens: 41_200, output_tokens: 1810 },
-			verification: { invocations: 3, input_tokens: 3900, output_tokens: 240 },
+			evaluation: {
+				invocations: 3,
+				input_tokens: 41_200,
+				cache_read_tokens: 38_400,
+				cache_write_tokens: 2800,
+				output_tokens: 1810,
+				cost: 0.0421,
+			},
+			verification: {
+				invocations: 3,
+				input_tokens: 3900,
+				cache_read_tokens: 0,
+				cache_write_tokens: 0,
+				output_tokens: 240,
+				cost: 0.0102,
+			},
+			total_cost: 0.0523,
+			cost_basis: "charged",
 		},
 		findings: [
 			{
@@ -147,9 +163,21 @@ describe("renderSummaryComment", () => {
 			"📊 <b>Review details</b> — 24 rules resolved · 6 selected · 3 evaluation tasks · 47,150 tokens",
 		);
 		expect(comment).toContain(
-			"| Evaluation | `anthropic/claude-sonnet-5` | 3 | 41,200 | 1,810 |",
+			"| Evaluation | `anthropic/claude-sonnet-5` | 3 | 41,200 | 1,810 | $0.0421 |",
 		);
+		expect(comment).toContain("| Total | | | | | $0.0523 |");
+		// A charged review carries no cost note.
+		expect(comment).not.toContain("list price estimate");
 		expect(comment).toContain("confirmed by an independent verification pass");
+	});
+
+	it("notes a cost that is a list price estimate", () => {
+		const report = exampleReport();
+		report.usage.cost_basis = "list_price_estimate";
+		const comment = renderSummaryComment(report, context);
+		expect(comment).toContain(
+			"The cost is a list price estimate, not a charge.",
+		);
 	});
 
 	it("keeps the overview table with one finding, omits empty sections", () => {
