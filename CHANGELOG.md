@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.0](https://github.com/getstandards/standards/compare/0.0.3...0.1.0) (2026-08-23)
+
+
+### Features
+
+* **review:** report the cost of a review and its cached token counts ([#12](https://github.com/getstandards/standards/issues/12)) ([3298e02](https://github.com/getstandards/standards/commit/3298e025f9a661401ff5d1646a2d3f8a5ee9fa58))
+
+
+### Bug Fixes
+
+* **action:** commit the dist bundle so the action runs from any ref ([#15](https://github.com/getstandards/standards/issues/15)) ([d688457](https://github.com/getstandards/standards/commit/d688457800740fb60027284aad5a8edb81004ca5))
+
+
+### Miscellaneous Chores
+
+* **assets:** remove unused assets ([9a05211](https://github.com/getstandards/standards/commit/9a0521118989e0d8186425e4c17733317c7004b2))
+* **deps:** update pnpm to v11.23.0 ([#14](https://github.com/getstandards/standards/issues/14)) ([a7c4b87](https://github.com/getstandards/standards/commit/a7c4b875d2785f0e7f1c951e2361e50ecaf3fc74))
+* **release-please:** update release-please configuration ([1714aae](https://github.com/getstandards/standards/commit/1714aaeafe6e91a066e92212167b0178f94de430))
+
 ## [0.0.3](https://github.com/getstandards/standards/compare/0.0.2...0.0.3) (2026-08-23)
 
 

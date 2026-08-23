@@ -1,6 +1,6 @@
 {
 	"name": "@getstandards/standards",
-	"version": "0.0.3",
+	"version": "0.1.0",
 	"description": "Standards turns your engineering rules into code an agent can enforce on every pull request",
 	"type": "module",
 	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
