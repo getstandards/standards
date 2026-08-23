@@ -29,7 +29,7 @@ on:
         required: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 permissions:
