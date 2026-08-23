@@ -92,6 +92,10 @@ permissions:
   checks: write
   pull-requests: write
 
+concurrency:
+  group: standards-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest
