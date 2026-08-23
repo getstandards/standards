@@ -36,41 +36,31 @@ rules:
         - src/**/*.{ts,tsx}
     guidance: Use the Money value object, or an integer in the smallest currency unit.
 
-  - id: clickhouse.double-delta-for-slowly-changing-metrics
+  - id: api.paginate-unbounded-collections
     level: SHOULD
-    description: A numeric column whose value changes slowly between adjacent rows uses the DoubleDelta codec.
-    rationale: Delta-based codecs cut storage and scan time on append-mostly metric tables.
+    description: An endpoint that returns a collection that can grow without bound accepts pagination parameters.
+    rationale: Unbounded responses degrade as the data grows, until the endpoint times out.
     applies_to:
       include:
-        - db/migrations/**/*.sql
-    guidance: Add CODEC(DoubleDelta) to the column definition.
+        - src/api/**/*.ts
+    guidance: Accept limit and cursor parameters and cap the page size.
 ```
 
 No linter can check the second rule. An agent can.
 
 ## Findings come with evidence
 
-Reviewing a migration that adds a `Nullable` column and a TTL clause:
+A review of a change that adds an unpaginated endpoint and computes a refund with floating-point arithmetic. `--verbose` shows every step of the pipeline:
 
-```text
-$ standards review --base HEAD~1 schemas/
-✘ Standards review: non-compliant
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/standards-review-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/standards-review-light.svg">
+    <img alt="Output of standards review: a non-compliant report with two findings, each with evidence, a reason, and guidance" width="880" src="assets/standards-review-light.svg">
+  </picture>
+</p>
 
-Findings
-
-  ⚠ schemas/20250918000001_initial.up.sql:23  clickhouse.nullable-columns (SHOULD NOT)
-    Evidence:   last_error Nullable(String)
-    Reason:     The change adds a Nullable(String) column, which creates an
-                extra UInt8 column and negatively affects storage and performance.
-    References: https://clickhouse.com/docs/concepts/best-practices/avoidnullablecolumns
-
-  ✘ schemas/20250918000001_initial.up.sql:28  clickhouse.ttl-only-drop-parts (MUST)
-    Evidence:   TTL timestamp + INTERVAL 180 DAY DELETE;
-    Reason:     The table uses a TTL clause but does not set ttl_only_drop_part = 1,
-                so expired parts are rewritten instead of dropped.
-```
-
-A separate verification pass re-checks every finding before it is reported. The full report also lists the models used and the exact token cost of the review.
+Deterministic planning selects the files and the rules the model sees. A separate verification pass re-checks every finding before it is reported. The report shows the models used and the exact token cost of the review.
 
 ## Quick start
 

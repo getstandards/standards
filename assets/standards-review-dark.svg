@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 682" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="12">
+  <title>standards review terminal output: a non-compliant report with two findings</title>
+  <rect x="0.5" y="0.5" width="879" height="681" rx="9" fill="#161b22" stroke="#30363d"/>
+  <path d="M0.5 9.5a9 9 0 0 1 9-9h861a9 9 0 0 1 9 9v26.5h-879z" fill="#21262d"/>
+  <line x1="0.5" y1="36" x2="879.5" y2="36" stroke="#30363d"/>
+  <circle cx="22" cy="18.5" r="5.5" fill="#ff5f57"/>
+  <circle cx="40" cy="18.5" r="5.5" fill="#febc2e"/>
+  <circle cx="58" cy="18.5" r="5.5" fill="#28c840"/>
+  <text x="440" y="22.5" text-anchor="middle" fill="#7d8590">standards review</text>
+  <text x="20" y="66" xml:space="preserve"><tspan fill="#7d8590">$ </tspan><tspan fill="#e6edf3">standards review --base main --verbose</tspan></text>
+  <text x="20" y="84" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Base revision:</tspan><tspan fill="#e6edf3"> 40c7741950173b8344ab825f49dcb50b7fa02d07</tspan></text>
+  <text x="20" y="102" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Head revision:</tspan><tspan fill="#e6edf3"> 95751e9e27dd86eecdc08fdff2bf6dc3180eb09e</tspan></text>
+  <text x="20" y="120" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Selected src/api/orders.ts (added):</tspan><tspan fill="#e6edf3"> money.no-floating-point, api.paginate-unbounded-collections</tspan></text>
+  <text x="20" y="138" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Selected src/billing/refund.ts (modified):</tspan><tspan fill="#e6edf3"> money.no-floating-point</tspan></text>
+  <text x="20" y="156" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Evaluation task 1/2:</tspan><tspan fill="#e6edf3"> src/api/orders.ts (rules: money.no-floating-point, api.paginate-unbounded-collections)</tspan></text>
+  <text x="20" y="174" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Evaluation task 2/2:</tspan><tspan fill="#e6edf3"> src/billing/refund.ts (rules: money.no-floating-point)</tspan></text>
+  <text x="20" y="192" xml:space="preserve"><tspan fill="#e6edf3">Evaluating 2 selected files in 2 evaluation tasks.</tspan></text>
+  <text x="20" y="210" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Evaluating task 1/2:</tspan><tspan fill="#e6edf3"> src/api/orders.ts.</tspan></text>
+  <text x="20" y="228" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Evaluating task 2/2:</tspan><tspan fill="#e6edf3"> src/billing/refund.ts.</tspan></text>
+  <text x="20" y="246" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Verifying finding 1/2:</tspan><tspan fill="#e6edf3"> api.paginate-unbounded-collections at src/api/orders.ts:14-14.</tspan></text>
+  <text x="20" y="264" xml:space="preserve"><tspan fill="#7d8590">› </tspan><tspan fill="#7d8590">Verifying finding 2/2:</tspan><tspan fill="#e6edf3"> money.no-floating-point at src/billing/refund.ts:41-41.</tspan></text>
+  <text x="20" y="282" xml:space="preserve"><tspan fill="#ff7b72">✘</tspan><tspan fill="#e6edf3" font-weight="600"> Standards review: non-compliant</tspan></text>
+  <text x="20" y="318" xml:space="preserve"><tspan fill="#7d8590">  Evaluation model:    </tspan><tspan fill="#e6edf3">anthropic/claude-sonnet-5</tspan></text>
+  <text x="20" y="336" xml:space="preserve"><tspan fill="#7d8590">  Verification model:  </tspan><tspan fill="#e6edf3">anthropic/claude-sonnet-5</tspan></text>
+  <text x="20" y="354" xml:space="preserve"><tspan fill="#7d8590">  Resolved rules:      </tspan><tspan fill="#39c5cf">2</tspan></text>
+  <text x="20" y="372" xml:space="preserve"><tspan fill="#7d8590">  Selected rules:      </tspan><tspan fill="#39c5cf">2</tspan></text>
+  <text x="20" y="390" xml:space="preserve"><tspan fill="#7d8590">  Evaluation tasks:    </tspan><tspan fill="#39c5cf">2</tspan></text>
+  <text x="20" y="408" xml:space="preserve"><tspan fill="#7d8590">  Findings:            </tspan><tspan fill="#ff7b72">MUST NOT: 1</tspan><tspan fill="#e6edf3">, </tspan><tspan fill="#d29922">SHOULD: 1</tspan></text>
+  <text x="20" y="426" xml:space="preserve"><tspan fill="#7d8590">  Evaluation usage:    </tspan><tspan fill="#7d8590">2 invocations, 4980 input tokens, 507 output tokens</tspan></text>
+  <text x="20" y="444" xml:space="preserve"><tspan fill="#7d8590">  Verification usage:  </tspan><tspan fill="#7d8590">2 invocations, 3675 input tokens, 348 output tokens</tspan></text>
+  <text x="20" y="480" xml:space="preserve"><tspan fill="#e6edf3" font-weight="600">Findings</tspan></text>
+  <text x="20" y="516" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#d29922">⚠</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#e6edf3" font-weight="600">src/api/orders.ts:14</tspan><tspan fill="#e6edf3">  </tspan><tspan fill="#39c5cf">api.paginate-unbounded-collections</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#d29922">(SHOULD)</tspan></text>
+  <text x="20" y="534" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Evidence:</tspan><tspan fill="#e6edf3">   router.get("/orders", async (_, res) =&gt; res.json(await orders.findAll()));</tspan></text>
+  <text x="20" y="552" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Reason:</tspan><tspan fill="#e6edf3">     The endpoint returns every order in one response and accepts no pagination parameters.</tspan></text>
+  <text x="20" y="570" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Guidance:</tspan><tspan fill="#e6edf3">   Accept limit and cursor parameters and cap the page size.</tspan></text>
+  <text x="20" y="606" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#ff7b72">✘</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#e6edf3" font-weight="600">src/billing/refund.ts:41</tspan><tspan fill="#e6edf3">  </tspan><tspan fill="#39c5cf">money.no-floating-point</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#ff7b72">(MUST NOT)</tspan></text>
+  <text x="20" y="624" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Evidence:</tspan><tspan fill="#e6edf3">   const refund = order.total * 0.15;</tspan></text>
+  <text x="20" y="642" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Reason:</tspan><tspan fill="#e6edf3">     The refund amount is computed with floating-point arithmetic on a monetary value.</tspan></text>
+  <text x="20" y="660" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7d8590">Guidance:</tspan><tspan fill="#e6edf3">   Use the Money value object, or an integer in the smallest currency unit.</tspan></text>
+</svg>
