@@ -1,0 +1,11 @@
+{
+	$schema: "https://docs.renovatebot.com/renovate-schema.json",
+	extends: [
+		// Sane defaults: semantic commits, dependency dashboard, grouped
+		// monorepo updates, and vulnerability alerts.
+		"config:recommended",
+		// Keep the workflow action pins on commit SHAs with version comments.
+		"helpers:pinGitHubActionDigests",
+	],
+	lockFileMaintenance: { enabled: true },
+}
