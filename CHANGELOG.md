@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.1](https://github.com/getstandards/standards/compare/0.1.0...0.1.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **release:** tag the release commit instead of rebuilding the bundle ([18da08d](https://github.com/getstandards/standards/commit/18da08d2dca085be5357c3bfb1eb83189ea764c7))
+
+
+### Miscellaneous Chores
+
+* **ci:** add standards workflow ([#17](https://github.com/getstandards/standards/issues/17)) ([b98cf92](https://github.com/getstandards/standards/commit/b98cf9285cc4099b9378b9801f4827111ffe7164))
+* **release-please:** drop unused GITHUB_TOKEN permissions ([4069301](https://github.com/getstandards/standards/commit/4069301adf86710af137fe8bab8cba33f6433915))
+* **renovate:** simplify the concurrency group ([4a228f6](https://github.com/getstandards/standards/commit/4a228f6c6c44686b200a082338336f895662032b))
+* **standards:** add standards rules ([205b5ce](https://github.com/getstandards/standards/commit/205b5ce422d704ecbe0b9a70ef0a21ed5d05100e))
+
 ## [0.1.0](https://github.com/getstandards/standards/compare/0.0.3...0.1.0) (2026-08-23)
 
 
