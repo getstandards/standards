@@ -10,7 +10,7 @@ interface CommandHelp {
 const COMMANDS: CommandHelp[] = [
 	{
 		name: "init",
-		description: "Create an initial Standards configuration (not implemented)",
+		description: "Create an initial Standards configuration",
 	},
 	{
 		name: "validate",
