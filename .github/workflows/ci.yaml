@@ -51,3 +51,8 @@ jobs:
 
       - name: Build the action bundle
         run: mise run build-action
+
+      - name: Verify the committed bundle is up to date
+        run: |
+          git add --all dist
+          git diff --exit-code --cached -- dist
