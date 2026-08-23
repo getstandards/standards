@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Rule } from "../config/index.js";
-import type { StepUsage } from "../review/agent-usage.js";
+import { formatCost, type StepUsage } from "../review/agent-usage.js";
 import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
 
 /**
@@ -334,7 +334,19 @@ function suppressedSection(
 
 /** Render one agent step row of the review details table. */
 function usageRow(step: string, model: string, usage: StepUsage): string {
-	return `| ${step} | \`${model}\` | ${formatCount(usage.invocations)} | ${formatCount(usage.input_tokens)} | ${formatCount(usage.output_tokens)} |`;
+	return `| ${step} | \`${model}\` | ${formatCount(usage.invocations)} | ${formatCount(usage.input_tokens)} | ${formatCount(usage.output_tokens)} | ${formatCost(usage.cost)} |`;
+}
+
+/** The note under the usage table when the cost is not a charge. */
+function costBasisNote(report: ReviewReport): string[] {
+	switch (report.usage.cost_basis) {
+		case "charged":
+			return [];
+		case "list_price_estimate":
+			return ["The cost is a list price estimate, not a charge."];
+		case "none":
+			return ["The models have no per-token price."];
+	}
 }
 
 /** Render the collapsed review details block with counts and usage. */
@@ -361,15 +373,17 @@ function detailsSection(report: ReviewReport): string {
 		].join("\n"),
 		"",
 		[
-			"| Agent step | Model | Invocations | Input tokens | Output tokens |",
-			"| --- | --- | ---: | ---: | ---: |",
+			"| Agent step | Model | Invocations | Input tokens | Output tokens | Cost |",
+			"| --- | --- | ---: | ---: | ---: | ---: |",
 			usageRow("Evaluation", report.models.evaluation, report.usage.evaluation),
 			usageRow(
 				"Verification",
 				report.models.verification,
 				report.usage.verification,
 			),
+			`| Total | | | | | ${formatCost(report.usage.total_cost)} |`,
 		].join("\n"),
+		...costBasisNote(report).flatMap((note) => ["", note]),
 		"",
 		"Every finding above was confirmed by an independent verification pass.",
 		"Rejected findings are not shown.",

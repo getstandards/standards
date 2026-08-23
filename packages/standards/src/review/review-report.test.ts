@@ -11,6 +11,7 @@ const models = {
 };
 const counts = { resolved_rules: 5, selected_rules: 2, evaluation_tasks: 1 };
 const usage = { evaluation: emptyStepUsage(), verification: emptyStepUsage() };
+const costBasis = "charged" as const;
 
 function rule(overrides: Partial<Rule> & Pick<Rule, "id" | "level">): Rule {
 	return {
@@ -36,6 +37,7 @@ describe("buildReviewReport", () => {
 			models,
 			counts,
 			usage,
+			costBasis,
 			confirmedFindings: [finding({ rule: "money.no-float" })],
 			ruleSet: [
 				rule({
@@ -62,6 +64,7 @@ describe("buildReviewReport", () => {
 			models,
 			counts,
 			usage,
+			costBasis,
 			confirmedFindings: [finding({ rule: "style.prefer-const" })],
 			ruleSet: [rule({ id: "style.prefer-const", level: "SHOULD" })],
 		});
@@ -75,6 +78,7 @@ describe("buildReviewReport", () => {
 			models,
 			counts,
 			usage,
+			costBasis,
 			confirmedFindings: [
 				finding({ rule: "b.rule", path: "src/b.ts", lines: [5, 5] }),
 				finding({ rule: "a.rule", path: "src/a.ts", lines: [9, 9] }),
@@ -93,5 +97,38 @@ describe("buildReviewReport", () => {
 			["src/a.ts", 9],
 			["src/b.ts", 5],
 		]);
+	});
+
+	it("carries the step costs, their total, and the cost basis", () => {
+		const report = buildReviewReport({
+			models,
+			counts,
+			usage: {
+				evaluation: {
+					invocations: 3,
+					input_tokens: 41_200,
+					cache_read_tokens: 38_400,
+					cache_write_tokens: 2800,
+					output_tokens: 1810,
+					cost: 0.0421,
+				},
+				verification: {
+					invocations: 2,
+					input_tokens: 3900,
+					cache_read_tokens: 0,
+					cache_write_tokens: 0,
+					output_tokens: 240,
+					cost: 0.0102,
+				},
+			},
+			costBasis: "list_price_estimate",
+			confirmedFindings: [],
+			ruleSet: [],
+		});
+
+		expect(report.usage.evaluation.cost).toBe(0.0421);
+		expect(report.usage.verification.cost).toBe(0.0102);
+		expect(report.usage.total_cost).toBeCloseTo(0.0523, 10);
+		expect(report.usage.cost_basis).toBe("list_price_estimate");
 	});
 });

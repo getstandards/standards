@@ -239,6 +239,7 @@ describe("runAction", () => {
 				"conclusion=non-compliant",
 				"blocking-count=1",
 				"warning-count=0",
+				"total-cost=0.0000",
 				`report-file=${reportFile}`,
 				"",
 			].join("\n"),

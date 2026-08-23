@@ -116,14 +116,14 @@ export async function runVerification(
 				signal: input.signal,
 			});
 			reportFindingFinished();
-			return { finding, confirmed: result.output, tokens: result.tokens };
+			return { finding, confirmed: result.output, usage: result.usage };
 		}),
 	);
 
 	let usage = emptyStepUsage();
 	const findings: Finding[] = [];
 	for (const result of results) {
-		usage = addInvocationUsage(usage, result.tokens);
+		usage = addInvocationUsage(usage, result.usage);
 		if (result.confirmed) {
 			findings.push(result.finding);
 		} else {

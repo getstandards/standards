@@ -11,9 +11,9 @@ import {
 	type Tool,
 	type ToolCall,
 	type TSchema,
+	type Usage,
 	validateToolArguments,
 } from "@earendil-works/pi-ai";
-import type { AgentTokens } from "./agent-usage.js";
 import type { AgentStep } from "./model-selection.js";
 import { executeReadHeadFile, readHeadFileTool } from "./read-head-file.js";
 
@@ -74,10 +74,11 @@ export interface ReviewAgentRequest<OutputToolSchema extends TSchema, Output> {
 	maxTurns?: number;
 }
 
-/** The structured result of one agent invocation and the tokens it spent. */
+/** The structured result of one agent invocation and the usage it spent. */
 export interface ReviewAgentResult<Output> {
 	output: Output;
-	tokens: AgentTokens;
+	/** The SDK usage of the invocation, summed across its model turns. */
+	usage: Usage;
 }
 
 /**
@@ -101,7 +102,14 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		tools,
 	};
 	const maxTurns = request.maxTurns ?? DEFAULT_MAX_TURNS;
-	const tokens: AgentTokens = { input: 0, output: 0 };
+	const usage: Usage = {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+	};
 	// Greedy decoding keeps repeated reviews of the same change as stable as
 	// the provider allows.
 	let sendTemperature = true;
@@ -116,8 +124,7 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 			request.retryPolicy ?? DEFAULT_RETRY_POLICY,
 			request.signal,
 		);
-		tokens.input += message.usage.input;
-		tokens.output += message.usage.output;
+		addMessageUsage(usage, message.usage);
 
 		// Some providers accept only their default temperature (OpenCode's
 		// kimi-k3 rejects everything but 1). Repeat the turn without the field.
@@ -139,7 +146,7 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 				request.outputTool,
 				outputCall,
 			) as Static<OutputToolSchema>;
-			return { output: request.parseOutput(toolArguments), tokens };
+			return { output: request.parseOutput(toolArguments), usage };
 		}
 		if (toolCalls.length === 0) {
 			context.messages.push({
@@ -163,6 +170,33 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		"no-structured-output",
 		`The model did not return a ${request.outputTool.name} result within ${maxTurns} turns.`,
 	);
+}
+
+/**
+ * Add one model turn's usage to the invocation total.
+ *
+ * The cost MUST be the sum of the per-request `usage.cost` values the SDK
+ * computed, never a cost recomputed from the summed tokens:
+ *
+ * - `Model.cost.tiers` holds request-wide pricing tiers; the highest matching
+ *   `inputTokensAbove` threshold applies to the complete request.
+ * - The tier threshold reads `input + cacheRead + cacheWrite` of one request.
+ *   Summed tokens would cross a threshold that no single request crossed, and
+ *   would over-report.
+ * - Anthropic charges twice the base input rate for a one-hour cache write;
+ *   the SDK applies this rule through `cacheWrite1h`.
+ */
+function addMessageUsage(total: Usage, usage: Usage): void {
+	total.input += usage.input;
+	total.output += usage.output;
+	total.cacheRead += usage.cacheRead;
+	total.cacheWrite += usage.cacheWrite;
+	total.totalTokens += usage.totalTokens;
+	total.cost.input += usage.cost.input;
+	total.cost.output += usage.cost.output;
+	total.cost.cacheRead += usage.cost.cacheRead;
+	total.cost.cacheWrite += usage.cost.cacheWrite;
+	total.cost.total += usage.cost.total;
 }
 
 /** True when the provider rejected the request's temperature value. */

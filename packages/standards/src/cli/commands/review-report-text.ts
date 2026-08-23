@@ -2,10 +2,11 @@ import chalk from "chalk";
 import figures from "figures";
 import { requirementLevels } from "../../config/configuration-schema.js";
 import type { Rule } from "../../config/index.js";
-import type { StepUsage } from "../../review/agent-usage.js";
+import { formatCost, type StepUsage } from "../../review/agent-usage.js";
 import type {
 	ReportedFinding,
 	ReviewReport,
+	ReviewUsage,
 } from "../../review/review-report.js";
 
 /**
@@ -29,6 +30,7 @@ export function renderReviewReportText(report: ReviewReport): string {
 		`  Findings:            ${formatFindingLevels(report.findings)}`,
 		`  Evaluation usage:    ${formatStepUsage(report.usage.evaluation)}`,
 		`  Verification usage:  ${formatStepUsage(report.usage.verification)}`,
+		`  Total cost:          ${formatTotalCost(report.usage)}`,
 	];
 	if (report.findings.length > 0) {
 		lines.push("", "Findings:");
@@ -96,6 +98,7 @@ export function renderReviewReportTerminal(report: ReviewReport): string {
 			"Verification usage:",
 			chalk.dim(formatStepUsage(report.usage.verification)),
 		),
+		reviewField("Total cost:", chalk.dim(formatTotalCost(report.usage))),
 	];
 	if (report.findings.length > 0) {
 		lines.push("", chalk.bold("Findings"));
@@ -158,9 +161,22 @@ function formatFindingLevelsTerminal(
 	return summary || chalk.dim("none");
 }
 
-/** Format one agent step's invocation and token counts. */
+/** Format one agent step's invocation and token counts and its cost. */
 function formatStepUsage(usage: StepUsage): string {
-	return `${usage.invocations} invocations, ${usage.input_tokens} input tokens, ${usage.output_tokens} output tokens`;
+	return `${usage.invocations} invocations, ${usage.input_tokens} input tokens, ${usage.output_tokens} output tokens, ${formatCost(usage.cost)}`;
+}
+
+/** The review's total cost, with a note when the value is not a charge. */
+function formatTotalCost(usage: ReviewUsage): string {
+	const cost = formatCost(usage.total_cost);
+	switch (usage.cost_basis) {
+		case "charged":
+			return cost;
+		case "list_price_estimate":
+			return `${cost} (list price estimate, not a charge)`;
+		case "none":
+			return `${cost} (the models have no per-token price)`;
+	}
 }
 
 /** The line number(s) of one finding as a path with a line range. */

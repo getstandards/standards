@@ -1,4 +1,4 @@
-import type { Api, Model, Models } from "@earendil-works/pi-ai";
+import type { Api, Model, ModelCost, Models } from "@earendil-works/pi-ai";
 import type { Rule } from "../config/index.js";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { emptyStepUsage } from "./agent-usage.js";
@@ -12,6 +12,7 @@ import {
 } from "./model-selection.js";
 import {
 	buildReviewReport,
+	type CostBasis,
 	type ReviewCounts,
 	type ReviewReport,
 } from "./review-report.js";
@@ -69,6 +70,18 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		settings: input.settings,
 		models: input.models,
 	});
+	const evaluationModel = resolveStepModel(
+		input.models,
+		selectedModels.evaluation,
+	);
+	const verificationModel = resolveStepModel(
+		input.models,
+		selectedModels.verification,
+	);
+	const costBasis = await resolveCostBasis(input.models, [
+		evaluationModel,
+		verificationModel,
+	]);
 
 	const allChangedFiles = await computeChange({
 		baseRevision: input.baseRevision,
@@ -119,6 +132,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 				evaluation: emptyStepUsage(),
 				verification: emptyStepUsage(),
 			},
+			costBasis,
 			confirmedFindings: [],
 			ruleSet: input.ruleSet,
 		});
@@ -144,15 +158,6 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			selections.length === 1 ? "" : "s"
 		} in ${tasks.length} evaluation task${tasks.length === 1 ? "" : "s"}.`,
 	);
-	const evaluationModel = resolveStepModel(
-		input.models,
-		selectedModels.evaluation,
-	);
-	const verificationModel = resolveStepModel(
-		input.models,
-		selectedModels.verification,
-	);
-
 	const evaluation = await runEvaluation({
 		models: input.models,
 		model: evaluationModel,
@@ -181,9 +186,45 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			evaluation: evaluation.usage,
 			verification: verification.usage,
 		},
+		costBasis,
 		confirmedFindings: verification.findings,
 		ruleSet: input.ruleSet,
 	});
+}
+
+/**
+ * Resolve what the review's cost number means (specs/review.md step 5).
+ *
+ * `Model.cost` holds the API list price. When every step model's rates are
+ * zero, the cost carries no information. When a step provider's credential is
+ * an OAuth subscription, the tokens are not charged per token, so the cost is
+ * an estimate at the API list price. Otherwise an API key credential pays it.
+ */
+async function resolveCostBasis(
+	models: Models,
+	stepModels: readonly Model<Api>[],
+): Promise<CostBasis> {
+	if (stepModels.every((model) => isZeroCost(model.cost))) {
+		return "none";
+	}
+	const providers = [...new Set(stepModels.map((model) => model.provider))];
+	const checks = await Promise.all(
+		providers.map((provider) => models.checkAuth(provider)),
+	);
+	return checks.some((check) => check?.type === "oauth")
+		? "list_price_estimate"
+		: "charged";
+}
+
+/** True when every rate of a model's cost, including its tiers, is zero. */
+function isZeroCost(cost: ModelCost): boolean {
+	return [cost, ...(cost.tiers ?? [])].every(
+		(rates) =>
+			rates.input === 0 &&
+			rates.output === 0 &&
+			rates.cacheRead === 0 &&
+			rates.cacheWrite === 0,
+	);
 }
 
 /** Resolve a model reference to the SDK model, or fail with a clear diagnostic. */

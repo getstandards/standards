@@ -45,7 +45,7 @@ describe("runReviewAgent", () => {
 		});
 
 		expect(result.output).toBe("hello");
-		expect(result.tokens.input).toBeGreaterThan(0);
+		expect(result.usage.input).toBeGreaterThan(0);
 	});
 
 	it("repeats the turn without temperature when the provider rejects it", async () => {

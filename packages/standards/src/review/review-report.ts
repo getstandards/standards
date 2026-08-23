@@ -48,6 +48,25 @@ export interface ReviewCounts {
 }
 
 /**
+ * What the review's cost number means (specs/review.md step 5).
+ *
+ * `charged` is a real charge through an API key credential.
+ * `list_price_estimate` is what the tokens would have cost through the API;
+ * a subscription credential does not charge per token. `none` means every
+ * selected model has a zero cost, so the number carries no information.
+ */
+export type CostBasis = "charged" | "list_price_estimate" | "none";
+
+/** The model usage and cost of one review, as the report shows it. */
+export interface ReviewUsage {
+	evaluation: StepUsage;
+	verification: StepUsage;
+	/** The sum of the step costs, in United States dollars. */
+	total_cost: number;
+	cost_basis: CostBasis;
+}
+
+/**
  * The one report data shape that every review surface renders (specs/review.md).
  *
  * `JSON.stringify` of this object is the machine-readable report for
@@ -58,7 +77,7 @@ export interface ReviewReport {
 	conclusion: ReviewConclusion;
 	models: { evaluation: ModelReference; verification: ModelReference };
 	counts: ReviewCounts;
-	usage: { evaluation: StepUsage; verification: StepUsage };
+	usage: ReviewUsage;
 	findings: ReportedFinding[];
 	suppressed: SuppressedFinding[];
 	invalid_suppressions: InvalidSuppression[];
@@ -69,6 +88,7 @@ export interface ReportInput {
 	models: { evaluation: ModelReference; verification: ModelReference };
 	counts: ReviewCounts;
 	usage: { evaluation: StepUsage; verification: StepUsage };
+	costBasis: CostBasis;
 	confirmedFindings: readonly Finding[];
 	ruleSet: readonly Rule[];
 }
@@ -99,7 +119,11 @@ export function buildReviewReport(input: ReportInput): ReviewReport {
 		conclusion,
 		models: input.models,
 		counts: input.counts,
-		usage: input.usage,
+		usage: {
+			...input.usage,
+			total_cost: input.usage.evaluation.cost + input.usage.verification.cost,
+			cost_basis: input.costBasis,
+		},
 		findings,
 		suppressed: [],
 		invalid_suppressions: [],
