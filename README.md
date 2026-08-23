@@ -8,7 +8,7 @@
 
 <p align="center">
   <strong>Write your engineering rules in YAML. An agent enforces them on every pull request.</strong><br>
-  Standards catches the judgement calls that linters miss, and reports every finding with evidence and line numbers.
+  Standards catches the judgement calls that no linter can express, and backs every finding with evidence and line numbers.
 </p>
 
 <p align="center">
@@ -18,7 +18,9 @@
 
 <!-- Add a screenshot of the pull request comment here. It is the best demo of what Standards does. -->
 
-## Rules look like this
+## Rules are code
+
+A rule states intent, not a syntax pattern. Each rule has an RFC 2119 level, a rationale, and the globs it applies to. Rules live in `.standards.yml` and change through pull requests, like any other code.
 
 ```yaml
 version: 1
@@ -44,47 +46,31 @@ rules:
     guidance: Add CODEC(DoubleDelta) to the column definition.
 ```
 
-A rule states intent, not a pattern. That is what makes it enforceable by an agent when no linter can express it.
+No linter can check the second rule. An agent can.
 
-## A review looks like this
+## Findings come with evidence
 
-A real run against a migration that adds a `Nullable` column and a TTL clause:
+Reviewing a migration that adds a `Nullable` column and a TTL clause:
 
 ```text
-$ standards review --base HEAD~1 schemas/ --verbose
-› Base revision: 40c7741950173b8344ab825f49dcb50b7fa02d07
-› Head revision: 95751e9e27dd86eecdc08fdff2bf6dc3180eb09e
-› Targets: schemas
-› Selected schemas/20250918000001_initial.up.sql (modified): clickhouse.ttl-only-drop-parts, clickhouse.nullable-columns
-› Evaluation task 1/1: schemas/20250918000001_initial.up.sql (rules: clickhouse.ttl-only-drop-parts, clickhouse.nullable-columns)
-Evaluating 1 selected file in 1 evaluation task.
-› Evaluating task 1/1: schemas/20250918000001_initial.up.sql.
-› Verifying finding 1/2: clickhouse.ttl-only-drop-parts at schemas/20250918000001_initial.up.sql:28-28.
-› Verifying finding 2/2: clickhouse.nullable-columns at schemas/20250918000001_initial.up.sql:23-23.
+$ standards review --base HEAD~1 schemas/
 ✘ Standards review: non-compliant
-
-  Evaluation model:    opencode-go/deepseek-v4-flash
-  Verification model:  opencode-go/deepseek-v4-flash
-  Resolved rules:      2
-  Selected rules:      2
-  Evaluation tasks:    1
-  Findings:            MUST: 1, SHOULD NOT: 1
-  Evaluation usage:    1 invocations, 2066 input tokens, 1305 output tokens
-  Verification usage:  2 invocations, 3237 input tokens, 737 output tokens
 
 Findings
 
   ⚠ schemas/20250918000001_initial.up.sql:23  clickhouse.nullable-columns (SHOULD NOT)
-    Evidence:   hello Nullable(String)
-    Reason:     The change adds a Nullable(String) column, which creates an extra UInt8 column and negatively affects storage and performance.
+    Evidence:   last_error Nullable(String)
+    Reason:     The change adds a Nullable(String) column, which creates an
+                extra UInt8 column and negatively affects storage and performance.
     References: https://clickhouse.com/docs/concepts/best-practices/avoidnullablecolumns
 
   ✘ schemas/20250918000001_initial.up.sql:28  clickhouse.ttl-only-drop-parts (MUST)
     Evidence:   TTL timestamp + INTERVAL 180 DAY DELETE;
-    Reason:     The table uses a ClickHouse TTL clause but does not set ttl_only_drop_part = 1 in a SETTINGS clause, so expired parts are rewritten instead of dropped.
+    Reason:     The table uses a TTL clause but does not set ttl_only_drop_part = 1,
+                so expired parts are rewritten instead of dropped.
 ```
 
-A separate verification pass re-checks every finding before it is reported. The report includes the models used and the token cost of the review.
+A separate verification pass re-checks every finding before it is reported. The full report also lists the models used and the exact token cost of the review.
 
 ## Quick start
 
@@ -96,7 +82,7 @@ npm install --global @getstandards/standards
 brew install getstandards/tap/standards
 ```
 
-**2. Add your rules.** Run `standards init` in your repository, then edit `.standards.yml` with the rules your team already agrees on, like the ones above.
+**2. Add your rules.** Run `standards init`, then put the rules your team already agrees on in `.standards.yml`.
 
 **3. Review a change locally:**
 
@@ -104,7 +90,7 @@ brew install getstandards/tap/standards
 standards review
 ```
 
-**4. Enforce the rules on every pull request** with the GitHub Action:
+**4. Enforce the rules on every pull request:**
 
 ```yaml
 # .github/workflows/standards.yml
@@ -128,33 +114,23 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-**5. Open a pull request.** The review runs against the change and posts its findings as a check run and a summary comment. The CLI and the Action run the same review pipeline and produce the same report.
-
-## Features
-
-- **Rules as code.** Each rule has an id, an RFC 2119 level (`MUST`, `SHOULD`, …), a description, a rationale, and file globs. Rules change through pull requests, like any other code.
-- **Share rule packs.** `extends` pulls rules from other repositories, so one team can publish standards and every service can adopt them. A lock file pins every revision, so reviews are reproducible.
-- **Built for judgement calls.** "A numeric column whose value changes slowly between adjacent rows should use `DoubleDelta`" is about intent, not pattern matching. An agent applies it; deterministic code does everything else.
-- **Token-frugal.** Deterministic planning selects what the model sees. One agent evaluates each task, and a separate verification step re-checks every finding before it is reported.
-- **Your provider, your model.** You choose the provider and the model for each step of the review.
-- **Terminal and GitHub.** The same report renders as CLI output, a check run, and a pull request comment.
+The Action runs the same pipeline as the CLI and posts the report as a check run and a pull request comment.
 
 ## Why Standards?
 
-Rules live in the wrong places — a wiki nobody opens, the head of the one person who reviews every schema change, an RFC that half the repos never adopted. They surface after the incident, when someone says *we knew about this.*
+Engineering rules live in wikis, RFCs, and one reviewer's head. They surface after the incident, when someone says *we knew about this*. Standards moves them somewhere enforceable:
 
-Most of them can't be caught by a linter either. "A numeric column whose value changes slowly between adjacent rows should use `DoubleDelta`" is a judgement call about intent, not a pattern match. That's the gap this fills: standards written precisely enough for a reviewing agent to apply, and auditable enough for a human to trust the result.
-
-## Why not a linter, or a generic AI reviewer?
-
-- **Linters match patterns.** Many engineering rules state intent: when a technique applies, which trade-off to prefer, what a change must respect. No AST rule expresses that. Standards rules are written for an agent that reads code the way a reviewer does.
-- **Generic AI reviewers guess what matters.** They apply the same opinion to every repository. Standards enforces *your* rules: written by your team, versioned in Git, scoped by globs, and reported with evidence you can audit.
+- **Not a linter.** Linters match patterns. Standards rules state intent — when a technique applies, which trade-off to prefer — and an agent applies them the way a reviewer does.
+- **Not a generic AI reviewer.** No borrowed opinions. The agent enforces *your* rules: written by your team, versioned in Git, scoped by globs, reported with evidence you can audit.
+- **Shareable.** `extends` pulls rule packs from other repositories, and a lock file pins every revision, so reviews are reproducible.
+- **Token-frugal.** Deterministic planning selects what the model sees; the agent only does the work that needs judgement.
+- **Your provider, your model.** You choose the provider and the model for each step of the review.
 
 ## Documentation
 
-The `specs/` directory contains the full specification:
+The full specification lives in [`specs/`](specs/):
 
-- [Configuration format](specs/configuration.md) — rules, `extends`, and the lock file
+- [Configuration](specs/configuration.md) — rules, `extends`, and the lock file
 - [Review pipeline](specs/review.md) — how a review runs, and how it keeps token use low
 - [CLI](specs/cli.md) — `init`, `validate`, `review`, and the other commands
 - [GitHub Action](specs/github.md) — check runs, pull request comments, and permissions
