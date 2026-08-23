@@ -1,0 +1,84 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Release
+
+on:
+  release:
+    types:
+      - published
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-cli:
+    name: Publish CLI
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required for npm trusted publishing (OIDC) and provenance.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          experimental: true
+          install_args: --locked
+
+      - name: Build
+        run: mise run build
+
+      # Authentication uses npm trusted publishing (OIDC), configured on the
+      # package settings page on npmjs.com. No token is needed, and npm
+      # attaches provenance automatically.
+      - name: Publish to npm
+        working-directory: packages/standards
+        run: npm publish
+
+  publish-action:
+    name: Publish Action
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # Checkout keeps its credentials: the last step pushes tags with the
+      # workflow token.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          experimental: true
+          install_args: --locked
+
+      - name: Build the action bundle
+        run: mise run build-action
+
+      # `dist/` is not committed to main, but `action.yml` points at
+      # `dist/action/index.js`. This step commits the bundle on a tag-only
+      # commit and publishes `vX.Y.Z` plus a floating `vX` tag, so
+      # `uses: getstandards/standards@vX` resolves a working action. It does
+      # not touch the release-please tag (no `v` prefix), which must keep
+      # pointing at a commit on main.
+      - name: Push the action tags
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          MAJOR="${VERSION%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --force dist/action
+          git commit --message "chore(release): action bundle for ${VERSION}"
+          git tag --force "v${VERSION}"
+          git tag --force "v${MAJOR}"
+          git push --force origin "v${VERSION}" "v${MAJOR}"
