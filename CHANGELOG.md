@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.3](https://github.com/getstandards/standards/compare/0.0.2...0.0.3) (2026-08-23)
+
+
+### Miscellaneous Chores
+
+* **action:** minify action build ([#4](https://github.com/getstandards/standards/issues/4)) ([94ed21e](https://github.com/getstandards/standards/commit/94ed21ebf3808f6d8dd3aaa3ff160bf2f8ff3c00))
+* **deps:** update dependency @inquirer/prompts to v8.6.0 ([#10](https://github.com/getstandards/standards/issues/10)) ([afef467](https://github.com/getstandards/standards/commit/afef467fa26c055d1efcbadf8899fc2b5b484211))
+* **deps:** update pnpm to v11.22.0 ([#11](https://github.com/getstandards/standards/issues/11)) ([2243301](https://github.com/getstandards/standards/commit/2243301c75e6c19259afc39f4e74a090b0420733))
+
 ## [0.0.2](https://github.com/getstandards/standards/compare/0.0.1...0.0.2) (2026-08-23)
 
 
