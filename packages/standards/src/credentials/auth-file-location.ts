@@ -14,7 +14,7 @@ export interface AuthFilePathOptions {
 /**
  * Resolve the per-user Standards credential file path for the current platform.
  *
- * The file holds provider credentials that `standards login` saved. It lives at
+ * The file holds provider credentials that `standards auth login` saved. It lives at
  * `$XDG_CONFIG_HOME/standards/auth.json` (or `$HOME/.config/standards/auth.json`)
  * on Unix systems and `%APPDATA%\standards\auth.json` on Windows.
  */

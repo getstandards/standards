@@ -10,7 +10,7 @@ import { errorMessage } from "../../utils/errors.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatKnownProvidersDiagnostic } from "./known-providers-diagnostic.js";
 
-/** Store a model provider credential from the `standards login` command. */
+/** Store a model provider credential from the `standards auth login` command. */
 export async function runLoginCommand(
 	context: CommandContext,
 	provider: string | undefined,
@@ -31,14 +31,14 @@ export async function runLoginCommand(
 			: models.getProvider(chosenProvider);
 	if (chosenProvider === undefined || sdkProvider === undefined) {
 		context.output.error(
-			formatKnownProvidersDiagnostic("login", chosenProvider, providers),
+			formatKnownProvidersDiagnostic("auth login", chosenProvider, providers),
 		);
 		return 1;
 	}
 
 	const method = selectProviderLoginMethod(sdkProvider);
 	if (method.kind === "ambient") {
-		context.output.error(`Standards login is not available for provider '${chosenProvider}'.
+		context.output.error(`Standards auth login is not available for provider '${chosenProvider}'.
 
 Problem:
   This provider has no interactive login method. It uses ambient credentials.
@@ -69,13 +69,13 @@ Next action:
 		);
 		return 0;
 	} catch (error) {
-		context.output.error(`Standards login failed for provider '${chosenProvider}'.
+		context.output.error(`Standards auth login failed for provider '${chosenProvider}'.
 
 Problem:
   ${errorMessage(error)}
 
 Next action:
-  Run 'standards login ${chosenProvider}' again.`);
+  Run 'standards auth login ${chosenProvider}' again.`);
 		return 1;
 	} finally {
 		process.removeListener("SIGINT", onInterrupt);
@@ -83,7 +83,7 @@ Next action:
 }
 
 /**
- * Resolve the provider to log in with (specs/cli.md login).
+ * Resolve the provider to log in with (specs/cli.md auth login).
  *
  * A provider passed on the command line wins. Without one, an interactive
  * terminal picks from the known providers; anything else resolves to no

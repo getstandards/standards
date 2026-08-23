@@ -7,12 +7,12 @@ import {
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
-import { renderCacheHelp, renderHelp, renderReviewHelp } from "./cli-help.js";
+import { renderCommandHelp, renderHelp } from "./cli-help.js";
+import { runAuthCommand } from "./commands/auth.js";
 import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLockCommand } from "./commands/lock.js";
-import { runLoginCommand } from "./commands/login.js";
-import { runLogoutCommand } from "./commands/logout.js";
+import { runModelsCommand } from "./commands/models-list.js";
 import { runReviewCommand } from "./commands/review.js";
 import { runSchemaCommand } from "./commands/schema.js";
 import { runValidateCommand } from "./commands/validate.js";
@@ -38,9 +38,11 @@ export async function runCli(
 	const {
 		command,
 		cacheSubcommand,
+		authSubcommand,
 		schemaTarget,
 		provider,
 		review,
+		models,
 		cacheDir,
 		noCache,
 		help,
@@ -55,7 +57,8 @@ export async function runCli(
 		return 0;
 	}
 	if (help) {
-		output.log(command === "review" ? renderReviewHelp() : renderCacheHelp());
+		// parseCliArgs only sets help for a command that has a help text.
+		output.log(renderCommandHelp(command) ?? renderHelp());
 		return 0;
 	}
 
@@ -114,10 +117,10 @@ export async function runCli(
 				return await runCacheCommand(context, cacheSubcommand);
 			case "schema":
 				return await runSchemaCommand(context, schemaTarget);
-			case "login":
-				return await runLoginCommand(context, provider);
-			case "logout":
-				return await runLogoutCommand(context, provider);
+			case "auth":
+				return await runAuthCommand(context, authSubcommand, provider);
+			case "models":
+				return await runModelsCommand(context, models ?? { all: false });
 		}
 	} catch (error) {
 		// Inquirer rejects a prompt with an ExitPromptError when the user

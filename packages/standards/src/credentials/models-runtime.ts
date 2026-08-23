@@ -29,8 +29,8 @@ export interface StandardsModels {
  * It registers every built-in pi AI SDK provider and gives the SDK the
  * persistent `auth.json` credential store and the default ambient auth context.
  * A stored credential wins over an ambient credential because the SDK resolves
- * the credential store first. It returns the store so `standards logout` can
- * read the current credential state.
+ * the credential store first. It returns the store so `standards auth logout` and
+ * `standards auth status` can read the current credential state.
  */
 export function createStandardsModels(
 	options: StandardsModelsOptions,

@@ -1,7 +1,7 @@
 import type { AuthType, Provider } from "@earendil-works/pi-ai";
 
 /**
- * The login method that `standards login` runs for a provider, or a report
+ * The login method that `standards auth login` runs for a provider, or a report
  * that the provider has no interactive method and uses ambient credentials.
  */
 export type ProviderLoginMethod =

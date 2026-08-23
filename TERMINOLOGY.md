@@ -21,7 +21,9 @@ Canonical words used across Standards code and documentation.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
 - **level** — The requirement level of a rule: `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, or `MAY` (RFC 2119).
 - **lock file** — The `.standards.lock` document that pins every mutable revision to an exact commit for reproducibility.
+- **model reference** — A provider and model identifier in `<provider>/<model>` form, such as `anthropic/claude-sonnet-5`. It is the value that `--model` and the model settings fields accept, and the value that `standards models` prints on every model line.
 - **mutable revision** — A `tag` or `branch` revision, as opposed to an immutable `commit`. Mutable revisions require a lock entry.
+- **provider** — One model provider registered in the pi AI SDK, named by its SDK provider id. The id is the credential key: `openai` and `openai-codex` are separate providers with separate credentials.
 - **rationale** — A rule field that states why the rule exists and which risk it addresses.
 - **references** — A rule field with supporting URLs or repository-relative paths.
 - **repository root** — The canonicalized root directory where `.standards.yml` and `.standards.lock` must live.

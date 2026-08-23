@@ -172,8 +172,8 @@ Problem:
   No model was selected and no provider has a usable credential.
 
 Next action:
-  Run 'standards login <provider>', or set a provider API key environment
-  variable, then run the review again.`);
+  Run 'standards auth login <provider>', or set a provider API key environment
+  variable. Run 'standards models' to see the usable model references.`);
 	}
 	if (providers.length > 1) {
 		const providerList = providers
@@ -189,7 +189,8 @@ Providers with a credential:
 ${providerList}
 
 Next action:
-  Select a model with --model <provider>/<model>, or a per-step option.`);
+  Select a model with --model <provider>/<model>, or a per-step option. Run
+  'standards models' to list the usable model references.`);
 	}
 	const model = DEFAULT_PROVIDER_MODELS[provider];
 	if (model === undefined) {
@@ -199,7 +200,8 @@ Problem:
   Provider '${provider}' has a usable credential but no default model.
 
 Next action:
-  Select a model with --model ${provider}/<model>, or a per-step option.`);
+  Select a model with --model ${provider}/<model>, or a per-step option. Run
+  'standards models ${provider}' to list its model references.`);
 	}
 	return modelReferenceSchema.parse(`${provider}/${model}`);
 }
@@ -220,8 +222,9 @@ Problem:
   ${source} names provider '${provider}', which has no usable credential.
 
 Next action:
-  Run 'standards login ${provider}', or set the provider API key environment
-  variable, then run the review again.`);
+  Run 'standards auth login ${provider}', or set the provider API key
+  environment variable. Run 'standards auth status' to see the credential
+  state of each provider.`);
 }
 
 /** Resolve the model reference for one agent step from all input sources. */
