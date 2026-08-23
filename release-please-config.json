@@ -11,7 +11,14 @@
       "include-component-in-tag": false,
       "include-v-in-tag": false,
       "include-v-in-release-name": false,
-      "always-update": true
+      "always-update": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/standards/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   },
   "changelog-sections": [
