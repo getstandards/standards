@@ -68,8 +68,6 @@ Deterministic planning selects the files and the rules the model sees. A separat
 
 ```bash
 npm install --global @getstandards/standards
-# or
-brew install getstandards/tap/standards
 ```
 
 **2. Add your rules.** Run `standards init`, then put the rules your team already agrees on in `.standards.yml`.
