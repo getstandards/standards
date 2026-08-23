@@ -2,5 +2,21 @@
 node = "24.19.0"
 pnpm = "11.20.0"
 
+[tasks.build]
+description = "Run build"
+run = "pnpm build"
+
+[tasks.build-action]
+description = "Run build"
+run = "pnpm build:action"
+
+[tasks.check]
+description = "Run check"
+run = "pnpm check"
+
+[tasks.test]
+description = "Run test"
+run = "pnpm test"
+
 [hooks]
 postinstall = "pnpm install"
