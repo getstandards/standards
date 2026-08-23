@@ -7,8 +7,8 @@ packages/*/dist
 coverage
 *.log
 
-# Generated JSON Schemas (written by apps/docs prebuild)
-apps/docs/public/schemas
+# Generated JSON Schemas (written by docs prebuild)
+docs/public/schemas
 
 # Editors and OS
 .DS_Store
