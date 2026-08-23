@@ -2,8 +2,8 @@
 node_modules
 .pnpm-store
 
-# Build output
-dist
+# Build output (the root dist/ action bundle is committed)
+packages/*/dist
 coverage
 *.log
 
