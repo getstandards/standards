@@ -8,6 +8,10 @@
 2. Correct the token counts the report already shows. They exclude cached
    tokens today, so a review that uses prompt caching under-reports its
    input.
+3. Show what a complete pull request cost, not only its last run. A pull
+   request is reviewed many times: it opens, the review asks for changes, the
+   author pushes a fix, and the review runs again. Each run spends tokens. The
+   summary comment MUST show the sum.
 
 ## Cost data from the provider SDK
 
@@ -100,16 +104,104 @@ Every surface that shows usage today MUST also show the cost:
 
 - `review-report-text.ts`: add the cost to each usage line and a review total.
   The plain text and the terminal rendering show the same value.
-- `report-markdown.ts`: add a cost column to the usage table and a total row.
-- `--format json`: the report above.
-- Action outputs: add `total-cost`, beside `conclusion`, `blocking-count`,
-  `warning-count`, and `report-file`, so a workflow can act on the spend.
+- `report-markdown.ts`: add a cost column to the usage table and a run total
+  row. The summary comment also shows the pull request total, defined in the
+  next section.
+- `--format json`: the report above. The report stays the record of **one**
+  run. A cumulative total belongs to a pull request, not to a review, so it
+  MUST NOT enter the report shape.
+- Action outputs: add `total-cost` for the run, and
+  `pull-request-total-cost` for the sum across runs, beside `conclusion`,
+  `blocking-count`, `warning-count`, and `report-file`. A workflow can then
+  act on either spend.
 
 A review costs a fraction of a cent to a few cents, so a text surface MUST
 show enough digits to make a small review readable. It formats a cost as
 `$0.0523`, with four decimal places, and shows `$0.0000` rather than `$0` for
 a cost that rounds to zero. A cost of exactly zero prints `$0.0000` as well;
 the note below covers the case where that number means nothing.
+
+## Cumulative cost on one pull request
+
+The summary comment is one comment per pull request, found by its
+`<!-- standards:report:v1 -->` marker and updated in place
+(specs/github.md summary comment). Every run replaces the body. A run cost
+written there alone would therefore replace the cost of the run before it,
+and the comment would answer "what did the last run cost?" instead of "what
+did this pull request cost?".
+
+The pull request has no other durable store. The check run of each run is a
+new object, and the action keeps no state between runs. So the comment MUST
+carry its own running total, and the action MUST read that total back before
+it writes the new body.
+
+### Reading the total back
+
+`findSummaryCommentId` in `action-runner.ts` already reads every comment body
+through `github.paginate`, and then keeps only the comment id. It MUST return
+the body as well. The change is a rename to `findSummaryComment`, returning
+the id and the body, because the return value changes.
+
+The total lives in a second hidden marker, in the same style as the finding
+fingerprint marker:
+
+```text
+<!-- standards:cost:v1 {"runs":3,"total_cost":0.1571} -->
+```
+
+The `standards:report:v1` marker MUST stay the comment's first line, because
+`findSummaryComment` matches it with `startsWith`. The cost marker takes the
+line after it.
+
+The action MUST parse this marker from the comment it found, add the cost of
+the current run, and write the new values back in the new body. A marker that
+is absent, unparsable, or holds values of the wrong type MUST be treated as
+absent. It MUST NOT fail the run: a review result is worth more than a cost
+total.
+
+### What the comment shows
+
+The collapsed details block gains two lines: the cost of this run, and the
+cost of the pull request with the number of runs it counts. For example:
+
+```text
+This run: $0.0523
+This pull request: $0.1571 across 3 runs
+```
+
+When the run is the first counted run, the comment shows only the run cost.
+One run is not a sum, and "across 1 run" reads as noise.
+
+### Counting rules
+
+- A re-run for the same head commit MUST add its cost. The re-run spent the
+  tokens again. The total answers what the pull request cost, not what its
+  distinct commits cost.
+- A cancelled run MUST NOT add its cost. It never writes the comment, so its
+  partial spend is lost. This under-reports, and that is the correct
+  direction for a number a user may read as a bill.
+- A force push or a rebase does not reset the total. The tokens were spent.
+- A compliant run with no findings does not create the summary comment
+  (specs/github.md). Its cost is lost when no comment exists yet. So a pull
+  request whose **first** runs are all clean starts its count at the first run
+  that creates the comment. The comment MUST say `across N runs`, naming the
+  runs it counted, and MUST NOT claim to be the complete history.
+- An existing comment from a release before this change holds no cost marker.
+  The action MUST start the count at the current run and MUST NOT read the
+  missing marker as a zero total. A zero would present an unknown history as a
+  known one.
+
+### Concurrency
+
+Reading the total and writing the new body is a read-modify-write on one
+comment through the GitHub API, which offers no compare-and-set. Two runs that
+overlap can therefore lose one increment. The recommended workflow in
+specs/github.md sets `concurrency` with `cancel-in-progress: true`, which
+stops the overlap for the documented setup.
+
+This is an accepted limitation, not a defect to design around: the cost of a
+lock or a retry loop is higher than the cost of a rare lost increment in a
+number that informs rather than gates. `specs/github.md` MUST state it.
 
 ## A subscription credential has no per-token price
 
@@ -141,7 +233,11 @@ Option 2 is smaller and risks a user reading a subscription review as a bill.
   and the per-invocation accumulation rule. The version 1 exclusion for
   budgets and spend limits stays: this change reports a cost, it does not cap
   one.
-- `specs/github.md`: add the `total-cost` action output.
+- `specs/github.md`: add the `total-cost` and `pull-request-total-cost`
+  action outputs. The summary comment section MUST define the
+  `standards:cost:v1` marker, require the running total, and state the
+  counting rules and the concurrency limit above. The comment layout list
+  MUST name the two cost lines in the details block.
 - `TERMINOLOGY.md`: add **cost** (the model spend of a review in United
   States dollars, from the provider SDK rates) and **cache read tokens** and
   **cache write tokens** if the report names them.
@@ -161,7 +257,17 @@ Option 2 is smaller and risks a user reading a subscription review as a bill.
 - `review-report.test.ts`: the report holds the per-step costs and the total.
 - `review-report-text.test.ts` and `report-markdown.test.ts`: the cost appears
   in each rendering, with a small cost readable and a zero cost shown.
-- `action-run.test.ts`: the `total-cost` output is set.
+- `action-run.test.ts`: both the `total-cost` and the
+  `pull-request-total-cost` outputs are set.
+- The cumulative total, against a mocked Octokit:
+  - A first run writes the cost marker and shows only the run cost.
+  - A second run reads the marker, adds its cost, and shows
+    `across 2 runs`.
+  - An existing comment with no cost marker starts the count at this run and
+    does not report the total as this run's cost alone.
+  - An unparsable cost marker does not fail the run.
+  - The rendered marker survives a round trip: the body one run writes parses
+    back to the same values in the next run.
 - A fake Models collection returns messages with a known `usage.cost`, so no
   test reaches a provider.
 
