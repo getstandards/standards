@@ -42,20 +42,18 @@ export type HeadRegionResult =
 	| { ok: false; message: string };
 
 /**
- * Read a line range from the head checkout, confined to it.
+ * Resolve a repository-relative path to its real path inside the head
+ * checkout, or return why the read failed.
  *
- * It resolves the requested path through the real head checkout root and denies
- * any path that escapes it, including through a symlink. The change is
+ * It resolves the requested path through the real head checkout root and
+ * denies any path that escapes it, including through a symlink. The change is
  * untrusted, so the boundary check is the security boundary, not the agent's
- * cooperation (specs/review.md security considerations). Output lines carry
- * their 1-based line number.
+ * cooperation (specs/review.md security considerations).
  */
-export async function readHeadRegion(
+async function resolveHeadPath(
 	headCheckoutDir: string,
 	relativePath: string,
-	startLine?: number,
-	endLine?: number,
-): Promise<HeadRegionResult> {
+): Promise<{ ok: true; path: string } | { ok: false; message: string }> {
 	const realRoot = await realpath(headCheckoutDir);
 	const resolved = path.resolve(realRoot, relativePath);
 
@@ -74,10 +72,29 @@ export async function readHeadRegion(
 			message: `read_file denied: '${relativePath}' is outside the head checkout.`,
 		};
 	}
+	return { ok: true, path: realTarget };
+}
+
+/**
+ * Read a line range from the head checkout, confined to it.
+ *
+ * Output lines carry their 1-based line number. A missing or denied path
+ * returns the failure message as text, so the agent can read it as a result.
+ */
+export async function readHeadRegion(
+	headCheckoutDir: string,
+	relativePath: string,
+	startLine?: number,
+	endLine?: number,
+): Promise<HeadRegionResult> {
+	const resolved = await resolveHeadPath(headCheckoutDir, relativePath);
+	if (!resolved.ok) {
+		return resolved;
+	}
 
 	let content: string;
 	try {
-		content = await readFile(realTarget, "utf8");
+		content = await readFile(resolved.path, "utf8");
 	} catch (error) {
 		return {
 			ok: false,
@@ -85,6 +102,35 @@ export async function readHeadRegion(
 		};
 	}
 	return { ok: true, text: numberedLines(content, startLine, endLine) };
+}
+
+/**
+ * Read a head checkout file as its split lines, or undefined when the file is
+ * missing or denied.
+ *
+ * The verification step uses this to check a candidate suggested change
+ * against the head revision before the agent runs (specs/review.md step 4).
+ */
+export async function readHeadFileLines(
+	headCheckoutDir: string,
+	relativePath: string,
+): Promise<string[] | undefined> {
+	const resolved = await resolveHeadPath(headCheckoutDir, relativePath);
+	if (!resolved.ok) {
+		return undefined;
+	}
+	try {
+		const content = await readFile(resolved.path, "utf8");
+		const lines = content.split("\n");
+		// A final line break terminates the last line; it is not an extra
+		// empty line, so a line range must not be able to reach past it.
+		if (lines.at(-1) === "") {
+			lines.pop();
+		}
+		return lines;
+	} catch {
+		return undefined;
+	}
 }
 
 /**

@@ -53,6 +53,15 @@ const reportRuleVerdictsTool = {
 							description:
 								"One or two sentences that connect the evidence to the rule.",
 						}),
+						suggested_change: Type.Optional(
+							Type.String({
+								description:
+									"The exact replacement for every line from first_line through " +
+									"last_line, without a Markdown fence, with \\n between replacement " +
+									"lines and no final line break. Omit it when you cannot make a " +
+									"small, exact change that resolves the finding.",
+							}),
+						),
 					}),
 					{
 						description:
@@ -71,6 +80,8 @@ const EVALUATION_SYSTEM_PROMPT = `You review a code change against a set of rule
 You receive changed files, the rules selected for each file, and the change hunks. Judge every rule of every file and return one verdict for each rule and file pair. A rule applies to a file as a first filter, not as proof of relevance: mark a rule compliant when it does not apply to the change you see. Mark a rule violated only when the change shows the violation, and attach one finding per violation.
 
 Report line ranges in the head revision, or in the base revision for a deleted file. Keep each evidence quote short: quote only what the violation needs.
+
+Attach a suggested_change to a finding only when you can make a small, exact replacement for every line from first_line through last_line that resolves the finding. The value is replacement text without a Markdown fence; use \n between replacement lines and no final line break. It MUST replace the complete range and MUST NOT describe edits outside it. Omit suggested_change when the finding is in a deleted file, when the correct change only deletes those lines, when the change needs edits outside the range or in another file, when the correct replacement needs a product decision, a secret, or information you cannot confirm from the head checkout, or when you cannot confirm that an exact replacement resolves the finding. Check the surrounding code first; do not copy rule guidance into suggested_change unless that text is the exact replacement. Preserve the file's existing format and do not include unrelated cleanup.
 
 Call read_file when a hunk alone is not enough to judge a rule. Do not fetch URLs. Do not read outside the head checkout.
 
@@ -161,6 +172,11 @@ function flattenVerdicts(verdicts: ReportedRuleVerdicts): Finding[] {
 						lines: [finding.first_line, finding.last_line],
 						evidence: finding.evidence,
 						reason: finding.reason,
+						// An agent's empty suggested_change means none.
+						suggestedChange:
+							finding.suggested_change === ""
+								? undefined
+								: finding.suggested_change,
 					}),
 				)
 			: [],

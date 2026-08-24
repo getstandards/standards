@@ -100,6 +100,74 @@ describe("runEvaluation", () => {
 		expect(output.usage.invocations).toBe(1);
 	});
 
+	it("keeps a non-empty suggested change and drops an empty one", async () => {
+		const faux = fauxProvider();
+		const models = createModels();
+		models.setProvider(faux.provider);
+		faux.setResponses([
+			fauxAssistantMessage([
+				fauxToolCall("report_rule_verdicts", {
+					verdicts: [
+						{
+							rule: "billing.no-float-money",
+							path: "invoice.ts",
+							verdict: "violated",
+							findings: [
+								{
+									first_line: 1,
+									last_line: 1,
+									evidence: "const total = subtotal * 1.2",
+									reason: "The total is a floating-point number.",
+									suggested_change:
+										"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+								},
+								{
+									first_line: 3,
+									last_line: 3,
+									evidence: "const tip = total * 0.1",
+									reason: "The tip is a floating-point number.",
+									suggested_change: "",
+								},
+							],
+						},
+					],
+				}),
+			]),
+		]);
+
+		const file: ChangedFile = {
+			status: "modified",
+			path: "invoice.ts",
+			binary: false,
+			hunks: [
+				{
+					baseStart: 1,
+					baseLines: 0,
+					headStart: 1,
+					headLines: 3,
+					lines: [
+						"+const total = subtotal * 1.2",
+						"+// keep",
+						"+const tip = total * 0.1",
+					],
+				},
+			],
+		};
+
+		const output = await runEvaluation({
+			models,
+			model: faux.getModel(),
+			tasks: [taskFor(file)],
+			headCheckoutDir: process.cwd(),
+		});
+
+		expect(output.findings).toHaveLength(2);
+		expect(output.findings[0]?.suggestedChange).toBe(
+			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+		);
+		expect(output.findings[1]?.suggestedChange).toBeUndefined();
+	});
+
 	it("lets the agent read the head checkout before it reports", async () => {
 		const directory = await makeCheckout();
 		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");

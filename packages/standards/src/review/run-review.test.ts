@@ -121,6 +121,124 @@ describe("runReview", () => {
 		expect(report.models.evaluation).toBe("anthropic/claude-sonnet-5");
 	});
 
+	it("reports the suggested change that verification accepted", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(
+			path.join(directory, "invoice.ts"),
+			"const total = subtotal * 1.2;\n",
+		);
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		const respond: FauxResponseFactory = (context) => {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
+				return fauxAssistantMessage([
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								verdict: "violated",
+								findings: [
+									{
+										first_line: 1,
+										last_line: 1,
+										evidence: "const total: number = subtotal * 1.2",
+										reason:
+											"The invoice total is computed and stored as a floating-point number.",
+										suggested_change:
+											"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+									},
+								],
+							},
+						],
+					}),
+				]);
+			}
+			return fauxAssistantMessage([
+				fauxToolCall("report_verdict", {
+					confirmed: true,
+					accepts_suggested_change: true,
+				}),
+			]);
+		};
+		faux.setResponses([respond, respond]);
+
+		const report = await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+		});
+
+		expect(report.version).toBe(2);
+		expect(report.findings).toHaveLength(1);
+		expect(report.findings[0]?.suggested_change).toBe(
+			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+		);
+	});
+
+	it("drops the suggested change when verification rejects it", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		await writeFile(
+			path.join(directory, "invoice.ts"),
+			"const total = subtotal * 1.2;\n",
+		);
+		const head = await commitAll(directory, "head");
+
+		const { faux, models } = anthropicFaux();
+		const respond: FauxResponseFactory = (context) => {
+			if ((context.systemPrompt ?? "").includes("report_rule_verdicts")) {
+				return fauxAssistantMessage([
+					fauxToolCall("report_rule_verdicts", {
+						verdicts: [
+							{
+								rule: "money.no-float",
+								path: "invoice.ts",
+								verdict: "violated",
+								findings: [
+									{
+										first_line: 1,
+										last_line: 1,
+										evidence: "const total = subtotal * 1.2",
+										reason: "The total is a floating-point number.",
+										suggested_change:
+											"const total = Money.fromMinorUnits(1200);",
+									},
+								],
+							},
+						],
+					}),
+				]);
+			}
+			return fauxAssistantMessage([
+				fauxToolCall("report_verdict", {
+					confirmed: true,
+					accepts_suggested_change: false,
+				}),
+			]);
+		};
+		faux.setResponses([respond, respond]);
+
+		const report = await runReview({
+			baseRevision: base,
+			headRevision: head,
+			workingDirectory: directory,
+			ruleSet: [moneyRule],
+			models,
+			environment: {},
+		});
+
+		expect(report.findings).toHaveLength(1);
+		expect(report.findings[0]?.suggested_change).toBeUndefined();
+	});
+
 	it("limits the review to the changed files a target matches", async () => {
 		const directory = await initRepository();
 		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");

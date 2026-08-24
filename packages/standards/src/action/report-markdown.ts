@@ -157,6 +157,31 @@ function evidenceBlock(evidence: string): string {
 	return `${fence}diff\n${body}\n${fence}`;
 }
 
+/**
+ * Render a suggested change as a GitHub `suggestion` code block.
+ *
+ * The annotated lines sit directly above the comment, so GitHub can apply the
+ * replacement when an authorized user chooses to (specs/github.md finding
+ * comments). The fence is long enough that the replacement cannot close it,
+ * and the replacement is put in verbatim.
+ */
+function suggestionBlock(replacement: string): string {
+	const fence = codeFence(replacement);
+	return `${fence}suggestion\n${replacement}\n${fence}`;
+}
+
+/**
+ * Render a suggested change as a labeled plain code block.
+ *
+ * The summary surfaces use this instead of GitHub's `suggestion` type: the
+ * block is not attached to an applicable diff range there
+ * (specs/github.md comment layout).
+ */
+function replacementBlock(replacement: string): string {
+	const fence = codeFence(replacement);
+	return `Suggested change:\n${fence}\n${replacement}\n${fence}`;
+}
+
 /** Render a rule's guidance and references as a quoted fix block. */
 function fixBlock(
 	context: ReportRenderContext,
@@ -196,6 +221,9 @@ function expandedFinding(
 		locationSentence(context, finding),
 		evidenceBlock(finding.evidence),
 		finding.reason,
+		...(finding.suggested_change !== undefined
+			? [replacementBlock(finding.suggested_change)]
+			: []),
 		...fixBlock(context, finding),
 	];
 }
@@ -215,6 +243,9 @@ function collapsedFinding(
 		evidenceBlock(finding.evidence),
 		"",
 		finding.reason,
+		...(finding.suggested_change !== undefined
+			? ["", replacementBlock(finding.suggested_change)]
+			: []),
 		...fixBlock(context, finding).flatMap((block) => ["", block]),
 		"",
 		"</details>",
@@ -452,13 +483,67 @@ function renderReportBody(
 	return sections.join("\n\n");
 }
 
-/** Clamp a rendered surface to the size the GitHub API accepts. */
+/**
+ * Clamp a rendered surface to the size the GitHub API accepts.
+ *
+ * A cut that would land inside a fenced code block moves before the block,
+ * so the result never exceeds the limit and a suggested change replacement
+ * is shown complete or omitted entirely, never truncated
+ * (specs/github.md comment layout).
+ */
 function clampSurface(body: string): string {
 	if (body.length <= SURFACE_CHARACTER_LIMIT) {
 		return body;
 	}
 	const notice = "\n\n… (truncated)";
-	return body.slice(0, SURFACE_CHARACTER_LIMIT - notice.length) + notice;
+	const limit = SURFACE_CHARACTER_LIMIT - notice.length;
+	const blockStart = fencedBlockStart(body, limit);
+	const text = body.slice(0, blockStart ?? limit).trimEnd();
+	return `${text}${notice}`;
+}
+
+/** The width of a line's opening or closing fence, when it starts one. */
+function fenceWidth(line: string): number | undefined {
+	const match = /^[ \t]*(`{3,})/.exec(line);
+	if (match === null) {
+		return undefined;
+	}
+	return match[1]?.length;
+}
+
+/**
+ * The start offset of the fenced block whose lines contain `position`, or
+ * undefined when that position is outside every fenced block.
+ *
+ * A closing fence counts when its backtick run is at least as long as the
+ * opening run. The opening and closing fence lines belong to the block, and
+ * a block left open runs to the end of the body.
+ */
+function fencedBlockStart(body: string, position: number): number | undefined {
+	let offset = 0;
+	let blockStart: number | undefined;
+	let openingFence: number | undefined;
+	for (const line of body.split("\n")) {
+		const lineEnd = offset + line.length + 1;
+		const width = fenceWidth(line);
+		const closes =
+			openingFence !== undefined &&
+			width !== undefined &&
+			width >= openingFence;
+		if (openingFence === undefined && width !== undefined) {
+			openingFence = width;
+			blockStart = offset;
+		}
+		if (position < lineEnd) {
+			return blockStart;
+		}
+		if (closes) {
+			openingFence = undefined;
+			blockStart = undefined;
+		}
+		offset = lineEnd;
+	}
+	return blockStart;
 }
 
 /**
@@ -522,13 +607,38 @@ export function renderSummaryComment(
  * Render one finding comment body (specs/github.md finding comments).
  *
  * The comment is short prose under the annotated lines: a severity emoji
- * and the reason in bold, the guidance and references as plain lines, and
- * a footer with the level and the rule id. It quotes no evidence — the
- * annotated lines sit directly above it.
+ * and the reason in bold, a GitHub `suggestion` block when the finding has
+ * an applicable suggested change, the guidance and references as plain
+ * lines, and a footer with the level and the rule id. It quotes no evidence
+ * — the annotated lines sit directly above it. `includeSuggestion` is false
+ * for the retry after GitHub rejects a suggestion-bearing comment.
+ *
+ * A suggested change is applicable only when the complete comment fits the
+ * surface limit; when it does not, the action omits the suggestion block
+ * and posts the plain comment instead.
  */
 export function renderFindingComment(
 	finding: ReportedFinding,
 	context: ReportRenderContext,
+	includeSuggestion = true,
+): string {
+	const withSuggestion =
+		includeSuggestion && finding.suggested_change !== undefined
+			? renderFindingCommentBody(finding, context, true)
+			: undefined;
+	const body =
+		withSuggestion !== undefined &&
+		withSuggestion.length <= SURFACE_CHARACTER_LIMIT
+			? withSuggestion
+			: renderFindingCommentBody(finding, context, false);
+	return clampSurface(body);
+}
+
+/** Render the complete finding comment for one include-suggestion choice. */
+function renderFindingCommentBody(
+	finding: ReportedFinding,
+	context: ReportRenderContext,
+	includeSuggestion: boolean,
 ): string {
 	const emoji = isBlockingLevel(finding.level) ? "🛑" : "🟡";
 	const advice: string[] = [];
@@ -540,12 +650,14 @@ export function renderFindingComment(
 	}
 	const sections = [
 		`${emoji} **${finding.reason}**`,
+		...(includeSuggestion && finding.suggested_change !== undefined
+			? [suggestionBlock(finding.suggested_change)]
+			: []),
 		...(advice.length > 0 ? [advice.join("\n")] : []),
 		`<sub>${finding.level} · \`${finding.rule}\` · Standards review</sub>`,
 	];
-	return clampSurface(
-		`${findingCommentMarker(finding)}\n${sections.join("\n\n")}`,
-	);
+	// The marker joins with a line break so it stays the first line.
+	return `${findingCommentMarker(finding)}\n${sections.join("\n\n")}`;
 }
 
 /** Render the check run summary for one review report (specs/github.md). */

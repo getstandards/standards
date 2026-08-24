@@ -59,6 +59,28 @@ describe("buildReviewReport", () => {
 		expect(report.invalid_suppressions).toEqual([]);
 	});
 
+	it("reports version 2 and the accepted suggested change", () => {
+		const report = buildReviewReport({
+			models,
+			counts,
+			usage,
+			costBasis,
+			confirmedFindings: [
+				finding({
+					rule: "money.no-float",
+					suggestedChange:
+						"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+				}),
+			],
+			ruleSet: [rule({ id: "money.no-float", level: "MUST NOT" })],
+		});
+
+		expect(report.version).toBe(2);
+		expect(report.findings[0]?.suggested_change).toBe(
+			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+		);
+	});
+
 	it("is compliant when every confirmed finding is a SHOULD warning", () => {
 		const report = buildReviewReport({
 			models,

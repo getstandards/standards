@@ -220,6 +220,114 @@ describe("createFindingComments", () => {
 			["POST", "/repos/acme/widgets/pulls/42/comments"],
 		]);
 	});
+
+	const renderSuggestionBody = (
+		comment: ReportedFinding,
+		includeSuggestion: boolean,
+	) =>
+		`<!-- standards:finding:v1:${findingFingerprint(comment)} -->\n${includeSuggestion ? "suggestion body" : "plain body"}`;
+
+	it("retries a rejected suggestion comment once without the suggestion", async () => {
+		const withSuggestion = {
+			...finding(1),
+			suggested_change: "const total = Money.fromMinorUnits(1200);",
+		};
+		const { github, requests } = mockGitHub([
+			[],
+			{ status: 422, body: { message: "suggestion rejected" } },
+			{ status: 422, body: { message: "suggestion rejected" } },
+			{},
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[withSuggestion],
+			renderSuggestionBody,
+		);
+
+		expect(unanchored).toEqual([]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+		]);
+		const retry = JSON.parse(await (requests[3]?.text() ?? ""));
+		expect(retry.body).toContain("plain body");
+		expect(retry.body).not.toContain("suggestion body");
+	});
+
+	it("treats a suggestion comment rejected twice as unanchored", async () => {
+		const withSuggestion = {
+			...finding(1),
+			suggested_change: "const total = Money.fromMinorUnits(1200);",
+		};
+		const { github, requests } = mockGitHub([
+			[],
+			{ status: 422, body: {} },
+			{ status: 422, body: {} },
+			{ status: 422, body: {} },
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[withSuggestion],
+			renderSuggestionBody,
+		);
+
+		expect(unanchored).toEqual([withSuggestion]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+		]);
+	});
+
+	it("does not retry when the posted body carried no suggestion block", async () => {
+		// The renderer omits the suggestion when the comment is too large, so
+		// both include-suggestion choices produce the same body.
+		const withSuggestion = {
+			...finding(1),
+			suggested_change: "const total = Money.fromMinorUnits(1200);",
+		};
+		const { github, requests } = mockGitHub([
+			[],
+			{ status: 422, body: {} },
+			{ status: 422, body: {} },
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[withSuggestion],
+			renderBody,
+		);
+
+		expect(unanchored).toEqual([withSuggestion]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+			["POST", "/repos/acme/widgets/pulls/42/comments"],
+		]);
+	});
 });
 
 describe("upsertSummaryComment", () => {
