@@ -8,4 +8,13 @@
 		"helpers:pinGitHubActionDigests",
 	],
 	lockFileMaintenance: { enabled: true },
+
+	// Match pnpm's own 24-hour supply-chain gate (minimumReleaseAge). This
+	// holds updates back until a release is one day old, so the lockfile a
+	// Renovate PR commits only ever contains mature versions and passes the
+	// pnpm lockfile verification on CI. The workflow already runs with
+	// internalChecksFilter=strict, so no branch/PR is created before the age
+	// check passes. Keep the pnpm default (minimumReleaseAge: 1440) in place; do
+	// not disable it in pnpm-workspace.yaml.
+	minimumReleaseAge: "1 day",
 }
