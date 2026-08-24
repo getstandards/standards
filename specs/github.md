@@ -239,18 +239,38 @@ The comment's first line is a hidden marker:
 The marker version is independent of the report format version. Suggested
 changes do not change the marker format, so the marker stays at version 1.
 
-The fingerprint identifies the finding across runs. It is the first sixteen
-characters of the lowercase hexadecimal SHA-256 digest of the rule `id`, the
-`path`, and the `evidence`, joined with a newline. The `lines` and the
-`suggested_change` are not part of the fingerprint. A push that only moves a
-finding or changes its suggested change does not repost its comment.
+The fingerprint identifies a finding when GitHub can no longer map its comment
+to the current diff. It is the first sixteen characters of the lowercase
+hexadecimal SHA-256 digest of the rule `id`, the `path`, and the source anchor,
+joined with a newline. The source anchor is the exact text from the first
+through the last finding line in the finding revision. The finding revision is
+the head revision, or the base revision for a deleted file. The action MUST
+represent line separators as `\n` and MUST omit a final line break from the
+source anchor before it computes the digest.
 
-Before posting, the action MUST list the pull request's review comments and
-skip every finding whose fingerprint marker already exists, including on an
-outdated comment. A re-run for the same or a new head commit MUST NOT
-create a second comment with the same fingerprint. The action MUST NOT
-edit, resolve, or delete a finding comment; the thread belongs to the
-reviewers.
+The fingerprint MUST NOT contain model output. The `evidence`, `reason`, and
+`suggested_change` are not stable across runs and MUST NOT affect finding
+identity. The line numbers are not part of the digest. A push that only moves
+an unchanged source anchor within the same path does not change its
+fingerprint.
+
+Before posting, the action MUST list its existing finding comments on the pull
+request. It MUST treat an existing comment as the same finding when the
+comment names the same rule and path and its GitHub-mapped current line range
+overlaps the new finding's line range. This range check is primary because an
+agent can select different but overlapping ranges for the same violation.
+
+GitHub does not provide a current line range for some outdated comments. For
+such a comment, the action MUST treat it as the same finding when its
+fingerprint equals the new finding's fingerprint. The action MUST NOT use an
+equal fingerprint to merge two comments that have mapped, non-overlapping
+current ranges. Identical source text can identify separate violations in one
+file.
+
+The action MUST skip a finding that matches an existing finding comment by
+either check. A re-run for the same or a new head commit MUST NOT create a
+second comment for the same finding. The action MUST NOT edit, resolve, or
+delete a finding comment; the thread belongs to the reviewers.
 
 GitHub rejects a review comment whose location is not part of the pull
 request diff. When a finding cannot be anchored, the action MUST render

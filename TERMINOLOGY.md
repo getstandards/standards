@@ -19,7 +19,7 @@ Canonical words used across Standards code and documentation.
 - **extension cycle** — A resolution failure that occurs when a source extends itself, directly or indirectly.
 - **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`, and an optional `suggested_change`.
 - **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, with an applicable suggested change when one is present, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
-- **fingerprint** — The identifier of a finding across runs: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the `evidence`, joined with a newline.
+- **fingerprint** — The stable identifier of a finding whose comment is no longer mapped to the current diff: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the source anchor, joined with a newline.
 - **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **guidance** — A rule field with non-normative remediation or an alternative approach.
@@ -39,6 +39,7 @@ Canonical words used across Standards code and documentation.
 - **rule verdict** — The evaluation agent's decision for one rule and file pair: `compliant` or `violated`, with one finding per violation.
 - **schema** — The normative JSON Schema documents in `schemas/v1/`.
 - **source** — One `extends` entry: a local source (`path`) or a Git source (`repository`, `revision`, `path`).
+- **source anchor** — The exact source text covered by a finding's `lines`, read from the head revision or from the base revision for a deleted file, with `\n` between lines and no final line break.
 - **source lock** — One resolved lock file entry: `repository`, `revision`, and the resolved `commit`.
 - **summary comment** — The one pull request comment that carries the report, found by the `<!-- standards:report:v1 -->` marker on its first line.
 - **suggested change** — An optional exact replacement for a finding's `lines`, proposed during evaluation and accepted during verification. It is report data that a user can inspect or apply, not an automatic repository change.
