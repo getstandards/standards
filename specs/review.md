@@ -207,8 +207,8 @@ A review runs five steps in order:
 | --- | --- | --- | --- | --- |
 | 1 | Selection | Deterministic | Rule set, changed files, targets | Selected rules per file |
 | 2 | Planning | Deterministic | Selected rules, hunks | Evaluation tasks |
-| 3 | Evaluation | One agent per task | Task rules, task hunks | Rule verdicts with findings |
-| 4 | Verification | One agent per finding | Finding, rule, code region | Confirmed findings |
+| 3 | Evaluation | One agent per task | Task rules, task hunks | Rule verdicts with findings and candidate suggested changes |
+| 4 | Verification | One agent per finding | Finding, rule, code region | Confirmed findings with accepted suggested changes |
 | 5 | Report | Deterministic | Confirmed findings | Report and conclusion |
 
 Evaluation and verification are the only steps that use a model. Every other
@@ -293,6 +293,28 @@ Each finding carries:
 | `last_line` | The last violating line, in the same revision as `first_line`. |
 | `evidence` | A short quote from the change that shows the violation. |
 | `reason` | One or two sentences that connect the evidence to the rule. |
+| `suggested_change` | An optional exact replacement for every line from `first_line` through `last_line`. |
+
+The evaluation agent SHOULD include `suggested_change` when it can make a
+small, exact change that resolves the finding. The value is replacement text,
+without a Markdown fence. It MUST be non-empty, MUST replace the complete
+range, and MUST NOT describe edits outside that range. It uses `\n` between
+replacement lines and has no final line break.
+
+The evaluation agent MUST omit `suggested_change` when:
+
+- The finding is in a deleted file.
+- The correct change only deletes the finding's line range.
+- The change needs edits outside the finding's line range or in another file.
+- The correct replacement needs a product decision, a secret, or information
+  that the agent cannot confirm from the head checkout.
+- The agent cannot confirm that an exact replacement resolves the finding.
+
+Guidance can help the agent produce a suggested change, but guidance is not a
+replacement template. The agent MUST check the surrounding code and MUST NOT
+copy guidance into `suggested_change` unless that text is the exact replacement.
+The suggested change SHOULD preserve the file's existing format and MUST NOT
+include unrelated cleanup.
 
 The agent MUST NOT return a prose report. The implementation MUST discard
 compliant verdicts and keep only the findings of violated verdicts; the
@@ -315,11 +337,16 @@ suppressed; it cannot change the conclusion, so verifying it would spend
 tokens on nothing.
 
 Each remaining finding runs as one independent agent invocation with fresh
-context: the rule fields from evaluation, the finding, and the code region
-around `lines`. The verifier does not receive the evaluation task's other
-rules, files, or findings. The implementation MAY report the count of
-finished findings while the step runs, so an interactive surface can show a
-loading status.
+context: the rule fields from evaluation, the finding, its candidate suggested
+change when present, and the code region around `lines`. The verifier does not
+receive the evaluation task's other rules, files, or findings. The
+implementation MAY report the count of finished findings while the step runs,
+so an interactive surface can show a loading status.
+
+Before the invocation, deterministic code MUST remove a candidate suggested
+change when the file does not exist in the head revision, the line range is not
+valid in that file, or the replacement is identical to the current line range.
+Removing the candidate MUST NOT remove the finding.
 
 The verifier confirms or rejects the finding:
 
@@ -327,6 +354,20 @@ The verifier confirms or rejects the finding:
 - For a `SHOULD` or `SHOULD NOT` rule, it MUST reject a finding when the
   change documents a valid reason for the exception.
 - It MUST NOT weaken or reword the rule.
+
+When the finding has a candidate suggested change, the verifier separately
+accepts or rejects it. The verifier MUST accept it only when the replacement:
+
+- Resolves the finding without weakening the rule.
+- Is valid for the complete finding line range.
+- Uses names and behavior that the verifier can confirm from the head
+  checkout.
+- Makes no unrelated change.
+
+The verifier MUST NOT create or modify a suggested change. This keeps the
+replacement independent from the agent that checks it. A rejected suggested
+change is removed, but its confirmed finding remains. An accepted candidate
+becomes the finding's suggested change in the report.
 
 Rejected findings are dropped from the report. The implementation MAY log
 them for diagnosis.
@@ -372,8 +413,8 @@ The report MUST include:
   a step. A text surface MUST add a short note when the value is not
   `charged`, so an estimate is never presented as a charge.
 - Each confirmed finding with its rule `id`, `level`, `path`, `lines`,
-  `evidence`, `reason`, and the rule's `guidance` and `references` when
-  present.
+  `evidence`, `reason`, the accepted `suggested_change` when present, and the
+  rule's `guidance` and `references` when present.
 - Each suppressed finding and each invalid suppression marker, as defined in
   [Standards suppressions](./suppressions.md).
 
@@ -385,7 +426,7 @@ as one JSON document:
 
 ```json
 {
-	"version": 1,
+	"version": 2,
 	"conclusion": "non-compliant",
 	"models": {
 		"evaluation": "anthropic/claude-sonnet-5",
@@ -424,6 +465,7 @@ as one JSON document:
 			"lines": [41, 44],
 			"evidence": "const total: number = subtotal * 1.2",
 			"reason": "The invoice total is computed and stored as a floating-point number.",
+			"suggested_change": "const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 			"guidance": "Use the Money value object or an integer in the smallest currency unit.",
 			"references": ["https://engineering.example.com/decisions/money-values"]
 		}
@@ -433,7 +475,9 @@ as one JSON document:
 }
 ```
 
-- `version` is the report format version. This document specifies version 1.
+- `version` is the report format version. This document specifies version 2.
+  Version 2 adds the optional `suggested_change` field. The other version 1
+  fields keep their meanings.
 - `cost`, `total_cost`, and `cost_basis` are defined above. A cost is a JSON
   number in United States dollars. The report MUST NOT hold a currency
   symbol or a locale-formatted value, so a consumer can add and compare
@@ -441,15 +485,23 @@ as one JSON document:
   `$0.0523`, and shows `$0.0000` rather than `$0` for a cost that rounds to
   zero.
 - `lines` is a two-element array: the first and last line of the finding.
+- `suggested_change` is the exact replacement for `lines`. It appears only
+  when evaluation proposed it and verification accepted it. It is always a
+  non-empty string.
 - `guidance` and `references` appear only when the rule defines them.
-- `suppressed` lists suppressed findings: the finding fields above plus the
-  marker's `suppression_reason`. `invalid_suppressions` lists invalid
-  markers with their `path`, `line`, and a `reason`. Both are defined in
-  [Standards suppressions](./suppressions.md).
+- `suppressed` lists suppressed findings: the finding fields above except
+  `suggested_change`, plus the marker's `suppression_reason`. A suppressed
+  finding has no suggested change because verification did not accept one.
+  `invalid_suppressions` lists invalid markers with their `path`, `line`, and a
+  `reason`. Both are defined in [Standards suppressions](./suppressions.md).
 
 The JSON report MUST contain the same information as the text rendering.
 Fields not listed here MUST NOT be added without a report format version
 change.
+
+A text rendering MUST show `suggested_change` under its finding with a
+`Suggested change` label. It MUST preserve the replacement's line boundaries
+and MUST NOT truncate the replacement.
 
 ## Provider failures
 
@@ -483,6 +535,8 @@ These rules keep token use low across the pipeline:
   file content beyond the hunks and their surrounding lines.
 - Only structured findings flow between steps. Agent transcripts MUST NOT be
   forwarded to another agent.
+- Suggested changes use the existing evaluation and verification invocations.
+  The implementation MUST NOT add a model step only to produce them.
 - Each agent step uses its selected model, resolved as defined in
   [Model selection](#model-selection). The default models balance review
   accuracy against token cost. A cheaper evaluation model with a stronger
@@ -507,8 +561,11 @@ These rules keep token use low across the pipeline:
   provider. It MUST NOT call a provider that the selection did not name.
 - Findings quote the change. An evidence quote MUST stay short and MUST NOT
   include more of the change than the violation needs.
+- Suggested changes are model output. The review MUST NOT write them to the
+  checkout, execute them, or claim that they passed repository checks. A user
+  must inspect a suggested change before applying it.
 
-## Version 1 exclusions
+## Version 2 exclusions
 
 This version does not define:
 
@@ -520,7 +577,8 @@ This version does not define:
   same commit.
 - Rules that need repository-wide context beyond the change and the head
   checkout reads described above.
-- Suggested fixes, autofix, or patch output.
+- Autofix and patch output. A suggested change is report data; the review does
+  not apply it to the repository.
 - Per-repository exception lists. In-change suppressions are defined in
   [Standards suppressions](./suppressions.md).
 - Incremental review of new commits on an already-reviewed pull request.
@@ -529,7 +587,7 @@ This version does not define:
   provider SDK reads from its own environment variables.
 - Budgets, spend limits, and token ceilings: a task size limit, a bound on
   agent reads, a cap on agent turns, or a per-run token ceiling. The
-  report's usage counts and cost show what a review spent; version 1
+  report's usage counts and cost show what a review spent; version 2
   reports a cost, it does not cap one. A later version MAY add
   budgets as a new feature; a task that exceeds the model's context window
   fails the review as a provider failure until then.

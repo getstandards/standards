@@ -10,7 +10,7 @@ const model = "anthropic/claude-sonnet-5" as ModelReference;
 
 function reportWith(overrides: Partial<ReviewReport>): ReviewReport {
 	return {
-		version: 1,
+		version: 2,
 		conclusion: "compliant",
 		models: { evaluation: model, verification: model },
 		counts: { resolved_rules: 2, selected_rules: 0, evaluation_tasks: 0 },
@@ -116,6 +116,31 @@ Findings:
     Reason:     The total is a floating-point number.
     Guidance:   Use an integer in the smallest currency unit.
     References: https://example.com/money`,
+		);
+	});
+
+	it("shows the suggested change under its finding with a label", () => {
+		const report = reportWith({
+			conclusion: "non-compliant",
+			counts: { resolved_rules: 2, selected_rules: 1, evaluation_tasks: 1 },
+			findings: [
+				{
+					rule: "money.no-float",
+					level: "MUST NOT",
+					path: "src/invoice.ts",
+					lines: [41, 44],
+					evidence: "const total = subtotal * 1.2",
+					reason: "The total is a floating-point number.",
+					suggested_change:
+						"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
+				},
+			],
+		});
+
+		const rendered = renderReviewReportText(report);
+		expect(rendered).toContain("    Suggested change:");
+		expect(rendered).toContain(
+			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 		);
 	});
 

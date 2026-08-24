@@ -20,7 +20,7 @@ const context = {
 /** The report data of the specs/github.md comment example. */
 function exampleReport(): ReviewReport {
 	return {
-		version: 1,
+		version: 2,
 		conclusion: "non-compliant",
 		models: {
 			evaluation: modelReferenceSchema.parse("anthropic/claude-sonnet-5"),
@@ -55,6 +55,8 @@ function exampleReport(): ReviewReport {
 				lines: [41, 44],
 				evidence: "const total: number = subtotal * 1.2",
 				reason: "The invoice total is computed as a floating-point number.",
+				suggested_change:
+					"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 				guidance: "Use the Money value object.",
 				references: ["https://engineering.example.com/decisions/money-values"],
 			},
@@ -234,6 +236,43 @@ describe("renderFindingComment", () => {
 		expect(comment).not.toContain("```diff");
 	});
 
+	it("renders the suggestion block after the reason when applicable", () => {
+		const comment = renderFindingComment(finding(), context);
+		expect(comment).toContain(
+			"🛑 **The invoice total is computed as a floating-point number.**\n\n" +
+				"```suggestion\n" +
+				"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);\n" +
+				"```\n\n💡 Use the Money value object.",
+		);
+	});
+
+	it("retries without the suggestion block when includeSuggestion is false", () => {
+		const comment = renderFindingComment(finding(), context, false);
+		expect(comment).toContain(
+			"🛑 **The invoice total is computed as a floating-point number.**",
+		);
+		expect(comment).not.toContain("```suggestion");
+		expect(comment).not.toContain("Money.fromMinorUnits");
+	});
+
+	it("uses a longer fence when the replacement can close the default one", () => {
+		const injected = {
+			...finding(),
+			suggested_change: "const a = 1;\n```\nconst b = 2;",
+		};
+		const comment = renderFindingComment(injected, context);
+		expect(comment).toContain("````suggestion\n");
+	});
+
+	it("omits the suggestion block when the complete comment is too large", () => {
+		const huge = { ...finding(), suggested_change: "x".repeat(70_000) };
+		const comment = renderFindingComment(huge, context);
+		expect(comment).toContain(
+			"🛑 **The invoice total is computed as a floating-point number.**",
+		);
+		expect(comment).not.toContain("```suggestion");
+	});
+
 	it("marks a warning-level finding and omits absent advice", () => {
 		const warning = exampleReport().findings[2];
 		if (warning === undefined) {
@@ -304,6 +343,58 @@ describe("renderCheckRunSummary", () => {
 		const positions = order.map((section) => summary.indexOf(section));
 		expect(positions.every((position) => position >= 0)).toBe(true);
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+	});
+
+	it("shows a suggested change as a plain replacement block", () => {
+		const summary = renderCheckRunSummary(exampleReport(), context);
+		expect(summary).toContain("Suggested change:");
+		expect(summary).toContain(
+			"```\nconst total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);\n```",
+		);
+		// The summary block is not a GitHub suggestion: it is not attached to
+		// an applicable diff range (specs/github.md comment layout).
+		expect(summary).not.toContain("```suggestion");
+	});
+
+	it("shows the replacement block for a collapsed warning finding", () => {
+		const report = exampleReport();
+		const anchorFinding = report.findings[0];
+		if (anchorFinding === undefined) {
+			throw new Error("The example report has findings.");
+		}
+		report.conclusion = "compliant";
+		report.findings = [{ ...anchorFinding, level: "SHOULD" }];
+		report.suppressed = [];
+		report.invalid_suppressions = [];
+		const summary = renderCheckRunSummary(report, context);
+		expect(summary).toContain("### ⚠️ Warnings");
+		expect(summary).toContain("Suggested change:");
+		expect(summary).not.toContain("```suggestion");
+	});
+
+	it("omits a replacement block that straddles the size limit", () => {
+		const report = exampleReport();
+		const oversized = report.findings[0];
+		if (oversized === undefined) {
+			throw new Error("The example report has findings.");
+		}
+		oversized.suggested_change = "const filler = 1;\n".repeat(4_000);
+		const summary = renderCheckRunSummary(report, context);
+		expect(summary.length).toBeLessThanOrEqual(65_535);
+		expect(summary.endsWith("… (truncated)")).toBe(true);
+		expect(summary).not.toContain("const filler = 1;");
+	});
+
+	it("clamps an oversized surface outside a code block at the limit", () => {
+		const report = exampleReport();
+		const oversized = report.findings[0];
+		if (oversized === undefined) {
+			throw new Error("The example report has findings.");
+		}
+		oversized.reason = "The reason repeats. ".repeat(4_000);
+		const summary = renderCheckRunSummary(report, context);
+		expect(summary.length).toBeLessThanOrEqual(65_535);
+		expect(summary.endsWith("… (truncated)")).toBe(true);
 	});
 });
 

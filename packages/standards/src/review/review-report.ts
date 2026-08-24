@@ -14,6 +14,8 @@ export interface ReportedFinding {
 	lines: [number, number];
 	evidence: string;
 	reason: string;
+	/** The accepted exact replacement for `lines`, when evaluation proposed one. */
+	suggested_change?: string;
 	guidance?: string;
 	references?: string[];
 }
@@ -73,7 +75,8 @@ export interface ReviewUsage {
  * `--format json`. A text surface renders the same fields.
  */
 export interface ReviewReport {
-	version: 1;
+	/** Version 2 adds the optional `suggested_change` field to each finding. */
+	version: 2;
 	conclusion: ReviewConclusion;
 	models: { evaluation: ModelReference; verification: ModelReference };
 	counts: ReviewCounts;
@@ -115,7 +118,7 @@ export function buildReviewReport(input: ReportInput): ReviewReport {
 		: "compliant";
 
 	return {
-		version: 1,
+		version: 2,
 		conclusion,
 		models: input.models,
 		counts: input.counts,
@@ -146,6 +149,10 @@ function toReportedFinding(
 		evidence: finding.evidence,
 		reason: finding.reason,
 	};
+	// The suggested change is report data only when verification accepted it.
+	if (finding.suggestedChange !== undefined) {
+		reported.suggested_change = finding.suggestedChange;
+	}
 	if (rule.guidance !== undefined) {
 		reported.guidance = rule.guidance;
 	}

@@ -157,7 +157,8 @@ export async function runAction(
 				headSha: context.headSha,
 			},
 			report.report.findings,
-			(finding) => renderFindingComment(finding, report.renderContext),
+			(finding, includeSuggestion) =>
+				renderFindingComment(finding, report.renderContext, includeSuggestion),
 		);
 		const hasEntries =
 			report.report.findings.length > 0 ||

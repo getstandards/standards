@@ -702,7 +702,7 @@ rules:
 			expect(stderr).toEqual([]);
 			expect(stdout).toHaveLength(1);
 			const report = JSON.parse(stdout[0] ?? "");
-			expect(report.version).toBe(1);
+			expect(report.version).toBe(2);
 			expect(report.conclusion).toBe("compliant");
 			expect(report.models.evaluation).toBe("anthropic/claude-sonnet-5");
 		});

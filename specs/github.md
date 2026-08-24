@@ -8,7 +8,8 @@ The GitHub Action is the automation surface of Standards. It runs
 `standards review` for a pull request and reports the result where reviewers
 already look: a check run that carries the verdict, one finding comment on
 each confirmed finding's changed lines, and one summary comment on the pull
-request.
+request. When a confirmed finding has a suggested change, its finding comment
+lets an authorized user apply that replacement through GitHub.
 
 This document specifies the action's workflow integration, authentication,
 inputs, run behavior, and reporting surfaces.
@@ -77,7 +78,7 @@ the checkout.
 The action authenticates to GitHub with the token given in the
 `github-token` input. The default is the workflow's `GITHUB_TOKEN`.
 
-A GitHub App is not required. Every version 1 surface — the check run, the
+A GitHub App is not required. Every surface defined here — the check run, the
 finding comments, and the summary comment — works with the workflow token
 and the permissions above. A GitHub App becomes necessary only for behavior
 this version excludes: review verdicts and review dismissal, resolving or
@@ -235,11 +236,14 @@ The comment's first line is a hidden marker:
 <!-- standards:finding:v1:<fingerprint> -->
 ```
 
+The marker version is independent of the report format version. Suggested
+changes do not change the marker format, so the marker stays at version 1.
+
 The fingerprint identifies the finding across runs. It is the first sixteen
-characters of the lowercase hexadecimal SHA-256 digest of the rule `id`,
-the `path`, and the `evidence`, joined with a newline. The `lines` are not
-part of the fingerprint, so a push that only moves a finding does not
-repost its comment.
+characters of the lowercase hexadecimal SHA-256 digest of the rule `id`, the
+`path`, and the `evidence`, joined with a newline. The `lines` and the
+`suggested_change` are not part of the fingerprint. A push that only moves a
+finding or changes its suggested change does not repost its comment.
 
 Before posting, the action MUST list the pull request's review comments and
 skip every finding whose fingerprint marker already exists, including on an
@@ -256,23 +260,47 @@ it stays visible in the report, as defined in
 [Standards suppressions](./suppressions.md).
 
 The comment body is short prose under the annotated lines. It opens with a
-severity emoji — 🛑 for `MUST` and `MUST NOT`, 🟡 otherwise — and the
-`reason` in bold. The rule's `guidance` follows as a 💡 line and each of
-its `references` as a 📚 line, when present. A footer carries the `level`,
-the rule `id`, and the product name, so the headline stays pure prose.
-The comment MUST NOT quote the `evidence`: the annotated lines sit
+severity emoji — 🛑 for `MUST` and `MUST NOT`, 🟡 otherwise — and the `reason`
+in bold. When the finding has an applicable suggested change, a GitHub
+`suggestion` code block follows the reason. The rule's `guidance` follows as a
+💡 line and each of its `references` as a 📚 line, when present. A footer
+carries the `level`, the rule `id`, and the product name, so the headline stays
+pure prose. The comment MUST NOT quote the `evidence`: the annotated lines sit
 directly above it. Example:
 
-```markdown
+````markdown
 <!-- standards:finding:v1:9f31c60a55e2b7d4 -->
 🛑 **The invoice total is computed and stored as a floating-point number.
 Floating-point rounding can produce incorrect payment amounts.**
+
+```suggestion
+const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);
+```
 
 💡 Use the Money value object or an integer in the smallest currency unit.
 📚 [engineering.example.com/decisions/money-values](https://engineering.example.com/decisions/money-values)
 
 <sub>MUST NOT · `payments.no-floating-point-money` · Standards review</sub>
-```
+````
+
+A suggested change is applicable when all these conditions are true:
+
+- The finding is anchored to the right side of the pull request diff at the
+  head commit.
+- Every line in the finding range is in one diff hunk.
+- The complete comment, including the exact replacement, fits within GitHub's
+  comment size limit.
+
+The action MUST put the exact `suggested_change` value inside the suggestion
+block. It MUST NOT reindent, escape, truncate, or otherwise modify the
+replacement. It MUST use a Markdown fence that the replacement cannot close.
+If the complete comment is too large, the action MUST omit the suggestion
+block and post the finding comment without it.
+
+If GitHub rejects a finding comment that contains a suggestion block, the
+action MUST retry that finding once without the suggestion block. If GitHub
+also rejects the plain finding comment, the action treats the finding as
+unanchored and renders it in the summary comment.
 
 The finding comment renders the same finding as the JSON report example in
 [Standards review](./review.md), without the `evidence` quote.
@@ -285,6 +313,9 @@ action finds it by a hidden marker that MUST be the comment's first line:
 ```text
 <!-- standards:report:v1 -->
 ```
+
+The summary marker version is also independent of the report format version.
+The marker stays at version 1 because its format does not change.
 
 - When a comment with the marker exists, the action MUST update it in place.
 - When none exists and the review produced findings, or failed, the action
@@ -311,8 +342,10 @@ report data in this order. A section with no entries MUST NOT render:
    be anchored to the diff — expanded, blocking first. An expanded finding
    shows its rule `id` and `level`, its `path` and `lines` as a link, the
    `evidence` quote in a `diff` code block as an added line, the `reason`,
-   and the rule's `guidance` and `references` when present, set off as a
-   quoted fix block.
+   the suggested change as a plain replacement block when present,
+   and the rule's `guidance` and `references` when present, set off as a quoted
+   fix block. The replacement block MUST NOT use GitHub's `suggestion` type
+   because it is not attached to an applicable diff range.
 5. Suppressed findings as a table: rule `id`, `level`, linked location, and
    the marker's reason, with a note that a suppressed finding was not
    verified. Invalid suppression markers follow as an alert callout with
@@ -395,7 +428,9 @@ presentation choices; the data each element carries is normative, the
 styling is not. The evidence quotes in the finding comments and the summary
 comment render untrusted change content; the quote length limits in
 [Standards review](./review.md) bound what a manipulated change can
-display.
+display. The check run summary MUST show each suggested change as a plain
+replacement block. A renderer MUST omit a suggested change rather than
+truncate its replacement.
 
 ## Fork pull requests
 
@@ -421,7 +456,9 @@ requests wait for the trust policy excluded by
 ## Security considerations
 
 - The workflow token needs only the three permissions listed above. The
-  action never needs `contents: write`.
+  action never needs `contents: write`. The action posts a suggestion but does
+  not apply it or push a commit. GitHub applies it only when an authorized user
+  chooses to apply it.
 - Provider API keys are secrets. Logs, the check run summary, and the
   summary comment MUST NOT contain them, as required by
   [Standards provider credentials](./credentials.md).
@@ -434,9 +471,11 @@ requests wait for the trust policy excluded by
   change; the quote length limits in that document bound what a manipulated
   change can display. A finding comment quotes no evidence; its `reason` is
   model output derived from the change, which that document bounds to one
-  or two sentences.
+  or two sentences. A suggested change is also model output. The action MUST
+  present it as a proposal and MUST NOT claim that repository checks passed
+  with it.
 
-## Version 1 exclusions
+## Version 2 exclusions
 
 This version does not define:
 

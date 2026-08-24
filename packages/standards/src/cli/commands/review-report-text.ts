@@ -193,6 +193,11 @@ function formatFinding(finding: ReportedFinding): string[] {
 		`    Evidence:   ${finding.evidence}`,
 		`    Reason:     ${finding.reason}`,
 	];
+	if (finding.suggested_change !== undefined) {
+		// The replacement keeps its own line boundaries; it is shown, never
+		// truncated (specs/review.md text rendering).
+		lines.push("    Suggested change:", finding.suggested_change);
+	}
 	if (finding.guidance !== undefined) {
 		lines.push(`    Guidance:   ${finding.guidance}`);
 	}
@@ -210,6 +215,12 @@ function formatFindingTerminal(finding: ReportedFinding): string[] {
 		`    ${chalk.dim("Evidence:")}   ${finding.evidence}`,
 		`    ${chalk.dim("Reason:")}     ${finding.reason}`,
 	];
+	if (finding.suggested_change !== undefined) {
+		lines.push(
+			`    ${chalk.dim("Suggested change:")}`,
+			finding.suggested_change,
+		);
+	}
 	if (finding.guidance !== undefined) {
 		lines.push(`    ${chalk.dim("Guidance:")}   ${finding.guidance}`);
 	}

@@ -174,14 +174,22 @@ function reviewComment(finding: ReportedFinding, body: string) {
  * expressed and reviewers get one notification. GitHub rejects a comment
  * whose location is not part of the diff, and one rejected location fails
  * the whole review, so a failed review falls back to one comment per
- * finding. The returned findings could not be anchored; the summary comment
- * renders them expanded instead.
+ * finding.
+ *
+ * A rejected comment that carries a suggestion block is retried once without
+ * it: GitHub's diff validation is what confirms that a suggested change is
+ * anchored to the head diff and lies within one diff hunk
+ * (specs/github.md finding comments). A plain comment that is also rejected
+ * is unanchored, so the summary comment renders it expanded instead.
+ *
+ * The returned findings could not be anchored; the summary comment renders
+ * them expanded instead.
  */
 export async function createFindingComments(
 	github: Octokit,
 	target: FindingCommentTarget,
 	findings: readonly ReportedFinding[],
-	renderBody: (finding: ReportedFinding) => string,
+	renderBody: (finding: ReportedFinding, includeSuggestion: boolean) => string,
 ): Promise<ReportedFinding[]> {
 	if (findings.length === 0) {
 		return [];
@@ -194,7 +202,7 @@ export async function createFindingComments(
 		return [];
 	}
 	const comments = newFindings.map((finding) =>
-		reviewComment(finding, renderBody(finding)),
+		reviewComment(finding, renderBody(finding, true)),
 	);
 	const pullRequest = {
 		owner: target.owner,
@@ -221,6 +229,25 @@ export async function createFindingComments(
 		}
 		try {
 			await github.pulls.createReviewComment({ ...pullRequest, ...comment });
+			continue;
+		} catch {
+			// Fall through to the retry decision below.
+		}
+		// Only a comment whose posted body carried a suggestion block earns a
+		// retry without it (specs/github.md finding comments). The renderer may
+		// have omitted the suggestion already, so compare bodies instead of
+		// checking the finding.
+		const plainBody = renderBody(finding, false);
+		if (plainBody === comment.body) {
+			unanchored.push(finding);
+			continue;
+		}
+		try {
+			await github.pulls.createReviewComment({
+				...pullRequest,
+				...comment,
+				body: plainBody,
+			});
 		} catch {
 			unanchored.push(finding);
 		}
