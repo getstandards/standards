@@ -137,8 +137,27 @@ describe("createFindingComments", () => {
 		evidence: `const total = subtotal * 1.2 // ${rule}:${line}`,
 		reason: "The total is a floating-point number.",
 	});
+	// The source anchor is the file text the finding's lines cover; each
+	// fixture carries its own text so fingerprints differ per finding.
+	const anchorFor = (comment: ReportedFinding) => comment.evidence;
+	const fingerprintOf = (comment: ReportedFinding) =>
+		findingFingerprint(comment.rule, comment.path, anchorFor(comment));
+	const footer = (comment: ReportedFinding) =>
+		`<sub>${comment.level} · \`${comment.rule}\` · Standards review</sub>`;
 	const renderBody = (comment: ReportedFinding) =>
-		`<!-- standards:finding:v1:${findingFingerprint(comment)} -->\nbody`;
+		`<!-- standards:finding:v1:${fingerprintOf(comment)} -->\nbody\n\n${footer(comment)}`;
+	const readAnchor = (comment: ReportedFinding) => anchorFor(comment);
+	/** One already-posted finding comment, as the GitHub API reports it. */
+	const existingComment = (
+		comment: ReportedFinding,
+		mappedLines?: [number, number],
+	) => ({
+		id: 7,
+		body: renderBody(comment),
+		path: comment.path,
+		line: mappedLines?.[1] ?? null,
+		start_line: mappedLines?.[0] ?? null,
+	});
 
 	it("posts one COMMENT review with one comment per finding", async () => {
 		const { github, requests } = mockGitHub([[], {}]);
@@ -147,6 +166,7 @@ describe("createFindingComments", () => {
 			github,
 			target,
 			[finding(1), finding(8, 12, "money.no-round")],
+			readAnchor,
 			renderBody,
 		);
 
@@ -173,21 +193,167 @@ describe("createFindingComments", () => {
 		expect(review.comments[1]).toMatchObject({ line: 12, start_line: 8 });
 	});
 
-	it("skips findings whose fingerprint marker already exists", async () => {
+	it("skips an outdated comment whose fingerprint matches", async () => {
 		const posted = finding(1);
+		const { github, requests } = mockGitHub([[existingComment(posted)]]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET"]);
+	});
+
+	it("skips a mapped comment by rule, path, and overlapping range", async () => {
+		// The existing comment names the same rule and path, and GitHub maps
+		// it to lines 41-44, overlapping the new finding's range. The agent
+		// selected a different anchor text for the same violation, so the
+		// fingerprints differ; the range check is primary
+		// (specs/github.md finding comments).
+		const posted = finding(41, 44);
+		const differentAnchor = {
+			...posted,
+			evidence: "const total = subtotal * 1.2 // money.no-float:41-44",
+		};
 		const { github, requests } = mockGitHub([
-			[{ id: 7, body: renderBody(posted) }],
+			[existingComment(differentAnchor, [41, 44])],
 		]);
 
 		const unanchored = await createFindingComments(
 			github,
 			target,
 			[posted],
+			readAnchor,
 			renderBody,
 		);
 
 		expect(unanchored).toEqual([]);
 		expect(requests.map((request) => request.method)).toEqual(["GET"]);
+	});
+
+	it("does not merge an equal fingerprint over non-overlapping mapped ranges", async () => {
+		// Identical source text can identify separate violations in one
+		// file, so an equal fingerprint must not merge two comments that
+		// GitHub maps to non-overlapping ranges (specs/github.md).
+		const posted = finding(41, 44);
+		const { github, requests } = mockGitHub([
+			[existingComment(posted, [1, 2])],
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		// The finding was posted, so nothing came back unanchored.
+		expect(unanchored).toEqual([]);
+		expect(
+			requests.map((request) => [
+				request.method,
+				new URL(request.url).pathname,
+			]),
+		).toEqual([
+			["GET", "/repos/acme/widgets/pulls/42/comments"],
+			["POST", "/repos/acme/widgets/pulls/42/reviews"],
+		]);
+	});
+
+	it("does not skip a mapped comment that names another rule", async () => {
+		const posted = finding(1);
+		const otherRule = finding(1, 1, "money.no-round");
+		const { github, requests } = mockGitHub([
+			[existingComment(otherRule, [1, 1])],
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		// The finding was posted, so nothing came back unanchored.
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET", "POST"]);
+	});
+
+	it("does not skip a mapped comment that names another path", async () => {
+		const posted = finding(1);
+		const otherPath = { ...posted, path: "estimate.ts" };
+		const { github, requests } = mockGitHub([
+			[existingComment(otherPath, [1, 1])],
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		// The finding was posted, so nothing came back unanchored.
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET", "POST"]);
+	});
+
+	it("does not skip an outdated comment whose fingerprint differs", async () => {
+		const posted = finding(1);
+		const differentAnchor = {
+			...posted,
+			evidence: "const total = subtotal * 1.2 // moved-elsewhere",
+		};
+		const { github, requests } = mockGitHub([
+			[existingComment(differentAnchor)],
+		]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		// The finding was posted, so nothing came back unanchored.
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET", "POST"]);
+	});
+
+	it("ignores a comment whose marker is not on the first line", async () => {
+		// The marker must be the first line (specs/github.md finding
+		// comments); a thread reply that quotes the marker is not a finding
+		// comment.
+		const posted = finding(1);
+		const quoted = {
+			id: 8,
+			body: `body\n<!-- standards:finding:v1:${fingerprintOf(posted)} -->`,
+			path: posted.path,
+			line: null,
+			start_line: null,
+		};
+		const { github, requests } = mockGitHub([[quoted]]);
+
+		const unanchored = await createFindingComments(
+			github,
+			target,
+			[posted],
+			readAnchor,
+			renderBody,
+		);
+
+		// The finding was posted, so nothing came back unanchored.
+		expect(unanchored).toEqual([]);
+		expect(requests.map((request) => request.method)).toEqual(["GET", "POST"]);
 	});
 
 	it("falls back to one comment per finding and returns the unanchored", async () => {
@@ -204,6 +370,7 @@ describe("createFindingComments", () => {
 			github,
 			target,
 			[anchorable, outsideDiff],
+			readAnchor,
 			renderBody,
 		);
 
@@ -225,7 +392,7 @@ describe("createFindingComments", () => {
 		comment: ReportedFinding,
 		includeSuggestion: boolean,
 	) =>
-		`<!-- standards:finding:v1:${findingFingerprint(comment)} -->\n${includeSuggestion ? "suggestion body" : "plain body"}`;
+		`<!-- standards:finding:v1:${fingerprintOf(comment)} -->\n${includeSuggestion ? "suggestion body" : "plain body"}\n\n${footer(comment)}`;
 
 	it("retries a rejected suggestion comment once without the suggestion", async () => {
 		const withSuggestion = {
@@ -243,6 +410,7 @@ describe("createFindingComments", () => {
 			github,
 			target,
 			[withSuggestion],
+			readAnchor,
 			renderSuggestionBody,
 		);
 
@@ -279,6 +447,7 @@ describe("createFindingComments", () => {
 			github,
 			target,
 			[withSuggestion],
+			readAnchor,
 			renderSuggestionBody,
 		);
 
@@ -313,6 +482,7 @@ describe("createFindingComments", () => {
 			github,
 			target,
 			[withSuggestion],
+			readAnchor,
 			renderBody,
 		);
 

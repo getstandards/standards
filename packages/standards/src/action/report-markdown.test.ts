@@ -4,6 +4,7 @@ import type { ReviewReport } from "../review/review-report.js";
 import {
 	FINDING_MARKER_PATTERN,
 	findingFingerprint,
+	findingSourceAnchor,
 	REPORT_COMMENT_MARKER,
 	renderCheckRunSummary,
 	renderFailureComment,
@@ -213,12 +214,15 @@ describe("renderFindingComment", () => {
 		}
 		return found;
 	};
+	// The source anchor is the file text the finding's lines cover; the
+	// fixture's evidence stands in for it.
+	const sourceAnchor = "const total: number = subtotal * 1.2";
 
 	it("starts with the fingerprint marker and renders the finding", () => {
-		const comment = renderFindingComment(finding(), context);
+		const comment = renderFindingComment(finding(), context, sourceAnchor);
 		const lines = comment.split("\n");
 		expect(lines[0]).toBe(
-			`<!-- standards:finding:v1:${findingFingerprint(finding())} -->`,
+			`<!-- standards:finding:v1:${findingFingerprint(finding().rule, finding().path, sourceAnchor)} -->`,
 		);
 		expect(lines[0]).toMatch(FINDING_MARKER_PATTERN);
 		expect(lines[1]).toBe(
@@ -237,7 +241,7 @@ describe("renderFindingComment", () => {
 	});
 
 	it("renders the suggestion block after the reason when applicable", () => {
-		const comment = renderFindingComment(finding(), context);
+		const comment = renderFindingComment(finding(), context, sourceAnchor);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**\n\n" +
 				"```suggestion\n" +
@@ -247,7 +251,12 @@ describe("renderFindingComment", () => {
 	});
 
 	it("retries without the suggestion block when includeSuggestion is false", () => {
-		const comment = renderFindingComment(finding(), context, false);
+		const comment = renderFindingComment(
+			finding(),
+			context,
+			sourceAnchor,
+			false,
+		);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**",
 		);
@@ -260,13 +269,13 @@ describe("renderFindingComment", () => {
 			...finding(),
 			suggested_change: "const a = 1;\n```\nconst b = 2;",
 		};
-		const comment = renderFindingComment(injected, context);
+		const comment = renderFindingComment(injected, context, sourceAnchor);
 		expect(comment).toContain("````suggestion\n");
 	});
 
 	it("omits the suggestion block when the complete comment is too large", () => {
 		const huge = { ...finding(), suggested_change: "x".repeat(70_000) };
-		const comment = renderFindingComment(huge, context);
+		const comment = renderFindingComment(huge, context, sourceAnchor);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**",
 		);
@@ -278,7 +287,7 @@ describe("renderFindingComment", () => {
 		if (warning === undefined) {
 			throw new Error("The example report has three findings.");
 		}
-		const comment = renderFindingComment(warning, context);
+		const comment = renderFindingComment(warning, context, sourceAnchor);
 		expect(comment).toContain(
 			"🟡 **The error response defines an ad-hoc shape.**",
 		);
@@ -290,12 +299,47 @@ describe("renderFindingComment", () => {
 
 	it("keeps the fingerprint stable when only the lines move", () => {
 		const moved = { ...finding(), lines: [90, 93] as [number, number] };
-		expect(findingFingerprint(moved)).toBe(findingFingerprint(finding()));
+		expect(findingFingerprint(moved.rule, moved.path, sourceAnchor)).toBe(
+			findingFingerprint(finding().rule, finding().path, sourceAnchor),
+		);
 	});
 
-	it("changes the fingerprint when the evidence changes", () => {
-		const changed = { ...finding(), evidence: "const total = subtotal * 1.3" };
-		expect(findingFingerprint(changed)).not.toBe(findingFingerprint(finding()));
+	it("keeps the fingerprint stable when model output changes", () => {
+		// The evidence, the reason, and the suggested change are agent
+		// output and can differ between runs (specs/github.md); they must
+		// not affect finding identity.
+		const changed = {
+			...finding(),
+			evidence: "const total = subtotal * 1.3",
+			reason: "A different reason.",
+			suggested_change: "const total = Money.fromMinorUnits(1300);",
+		};
+		expect(findingFingerprint(changed.rule, changed.path, sourceAnchor)).toBe(
+			findingFingerprint(finding().rule, finding().path, sourceAnchor),
+		);
+	});
+
+	it("changes the fingerprint when the source anchor changes", () => {
+		const differentAnchor = "const total = subtotal * 1.3";
+		expect(
+			findingFingerprint(finding().rule, finding().path, differentAnchor),
+		).not.toBe(
+			findingFingerprint(finding().rule, finding().path, sourceAnchor),
+		);
+	});
+});
+
+describe("findingSourceAnchor", () => {
+	it("extracts the finding lines with \\n separators", () => {
+		expect(findingSourceAnchor("a\nb\nc\nd\ne", [2, 4])).toBe("b\nc\nd");
+	});
+
+	it("omits a final line break from the anchor", () => {
+		expect(findingSourceAnchor("a\nb\n", [1, 2])).toBe("a\nb");
+	});
+
+	it("keeps one-line ranges to one line", () => {
+		expect(findingSourceAnchor("a\nb\n", [2, 2])).toBe("b");
 	});
 });
 
