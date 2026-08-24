@@ -17,8 +17,8 @@ Canonical words used across Standards code and documentation.
 - **entry file** — The `.standards.yml` at the repository root that starts resolution.
 - **extends** — An ordered list of other configuration sources loaded before the current file's own rules.
 - **extension cycle** — A resolution failure that occurs when a source extends itself, directly or indirectly.
-- **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`.
-- **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
+- **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`, and an optional `suggested_change`.
+- **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, with an applicable suggested change when one is present, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
 - **fingerprint** — The identifier of a finding across runs: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the `evidence`, joined with a newline.
 - **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Version 1 supports `*`, `?`, `**`, `[abc]`, and `{a,b}`.
@@ -41,5 +41,6 @@ Canonical words used across Standards code and documentation.
 - **source** — One `extends` entry: a local source (`path`) or a Git source (`repository`, `revision`, `path`).
 - **source lock** — One resolved lock file entry: `repository`, `revision`, and the resolved `commit`.
 - **summary comment** — The one pull request comment that carries the report, found by the `<!-- standards:report:v1 -->` marker on its first line.
+- **suggested change** — An optional exact replacement for a finding's `lines`, proposed during evaluation and accepted during verification. It is report data that a user can inspect or apply, not an automatic repository change.
 - **target** — A repository-relative path, file or directory, passed to `standards review` to limit the review to the changed files it matches.
-- **version** — The integer discriminator for document syntax. The configuration format and the lock format evolve independently.
+- **version** — The integer discriminator for document syntax. The configuration format, lock format, report format, and comment marker formats evolve independently.
