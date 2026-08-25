@@ -20,7 +20,7 @@
 
 ## Rules are code
 
-A rule states intent, not a syntax pattern. Each rule has an RFC 2119 level, a rationale, and the globs it applies to. Rules live in `.standards.yml` and change through pull requests, like any other code.
+Write down the rules your team already applies in code review. Each rule has an RFC 2119 level, a rationale, and the globs it applies to. Rules live in `.standards.yml` and change through pull requests, like code.
 
 ```yaml
 version: 1
@@ -72,13 +72,35 @@ npm install --global @getstandards/standards
 
 **2. Add your rules.** Run `standards init`, then put the rules your team already agrees on in `.standards.yml`.
 
-**3. Review a change locally:**
+**3. Connect a model provider.** With Anthropic:
+
+```bash
+standards auth login anthropic
+```
+
+Or with OpenRouter:
+
+```bash
+standards auth login openrouter
+```
+
+OpenRouter also needs a model. Save one in `~/.config/standards/settings.yml`:
+
+```yaml
+# ~/.config/standards/settings.yml
+version: 1
+model: openrouter/anthropic/claude-sonnet-5
+```
+
+See [provider credentials](specs/credentials.md) for environment variables and other providers.
+
+**4. Review a change locally:**
 
 ```bash
 standards review
 ```
 
-**4. Enforce the rules on every pull request:**
+**5. Enforce the rules on every pull request:**
 
 ```yaml
 # .github/workflows/standards.yml
@@ -106,13 +128,13 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-The Action runs the same pipeline as the CLI and posts the report as a check run and a pull request comment.
+The Action runs the same pipeline as the CLI and posts the report as a check run and a pull request comment. See the [GitHub Action specification](specs/github.md) to use another provider.
 
 ## Why Standards?
 
 Engineering rules live in wikis, RFCs, and one reviewer's head. They surface after the incident, when someone says *we knew about this*. Standards moves them somewhere enforceable:
 
-- **Not a linter.** Linters match patterns. Standards rules state intent — when a technique applies, which trade-off to prefer — and an agent applies them the way a reviewer does.
+- **Not a linter.** Linters match patterns. Standards rules describe when a technique applies and which trade-off to prefer. An agent applies them the way a reviewer does.
 - **Not a generic AI reviewer.** No borrowed opinions. The agent enforces *your* rules: written by your team, versioned in Git, scoped by globs, reported with evidence you can audit.
 - **Shareable.** `extends` pulls rule packs from other repositories, and a lock file pins every revision, so reviews are reproducible.
 - **Token-frugal.** Deterministic planning selects what the model sees; the agent only does the work that needs judgement.
@@ -122,12 +144,12 @@ Engineering rules live in wikis, RFCs, and one reviewer's head. They surface aft
 
 The full specification lives in [`specs/`](specs/):
 
-- [Configuration](specs/configuration.md) — rules, `extends`, and the lock file
-- [Review pipeline](specs/review.md) — how a review runs, and how it keeps token use low
-- [CLI](specs/cli.md) — `init`, `validate`, `review`, and the other commands
-- [GitHub Action](specs/github.md) — check runs, pull request comments, and permissions
-- [Suppressions](specs/suppressions.md) — how to waive a finding in code
-- [Rule tests](specs/testing.md) — how to test a rule before you enforce it
+- [Configuration](specs/configuration.md): rules, `extends`, and the lock file
+- [Review pipeline](specs/review.md): how a review runs, and how it keeps token use low
+- [CLI](specs/cli.md): `init`, `validate`, `review`, and the other commands
+- [GitHub Action](specs/github.md): check runs, pull request comments, and permissions
+- [Suppressions](specs/suppressions.md): how to waive a finding in code
+- [Rule tests](specs/testing.md): how to test a rule before you enforce it
 
 ## License
 
