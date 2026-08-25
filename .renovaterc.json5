@@ -17,4 +17,17 @@
 	// check passes. Keep the pnpm default (minimumReleaseAge: 1440) in place; do
 	// not disable it in pnpm-workspace.yaml.
 	minimumReleaseAge: "1 day",
+
+	// The committed action bundle in dist/ is built from the installed
+	// dependencies, so a lockfile change also changes the bundle. Rebuild it in
+	// the same commit; otherwise CI's bundle verification fails on every
+	// dependency pull request. Node and pnpm come from the `engines` field in
+	// package.json. The workflow allows both commands with
+	// RENOVATE_ALLOWED_COMMANDS.
+	postUpgradeTasks: {
+		commands: ["pnpm install --frozen-lockfile", "pnpm build:action"],
+		fileFilters: ["dist/action/index.js"],
+		executionMode: "branch",
+		installTools: { node: {}, pnpm: {} },
+	},
 }
