@@ -64,6 +64,7 @@ jobs:
         uses: renovatebot/github-action@5402b206248e5a8c8427a15102702eb9c1793efc # v46.2.4
         env:
           LOG_LEVEL: ${{ inputs.log_level || 'debug' }}
+          RENOVATE_ALLOWED_COMMANDS: '["^pnpm install --frozen-lockfile$", "^pnpm build:action$"]'
           RENOVATE_AUTODISCOVER: true
           RENOVATE_AUTODISCOVER_FILTER: ${{ github.repository }}
           RENOVATE_DRY_RUN: ${{ inputs.dry_run }}
