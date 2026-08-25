@@ -17,21 +17,51 @@ export const FINDING_MARKER_PATTERN =
 	/<!-- standards:finding:v1:([0-9a-f]{16}) -->/;
 
 /**
- * The fingerprint that identifies a finding across runs (specs/github.md).
+ * The fingerprint that identifies a finding when GitHub can no longer map
+ * its comment to the current diff (specs/github.md finding comments).
  *
- * The `lines` are not part of it, so a push that only moves a finding does
- * not repost its comment.
+ * It is the first sixteen characters of the lowercase hexadecimal SHA-256
+ * digest of the rule `id`, the `path`, and the source anchor, joined with a
+ * newline. The line numbers are not part of the digest, so a push that only
+ * moves an unchanged source anchor within the same path does not change the
+ * fingerprint. It never contains model output: the `evidence`, the `reason`,
+ * and the `suggested_change` MUST NOT affect finding identity.
  */
-export function findingFingerprint(finding: ReportedFinding): string {
+export function findingFingerprint(
+	rule: string,
+	path: string,
+	anchor: string,
+): string {
 	return createHash("sha256")
-		.update(`${finding.rule}\n${finding.path}\n${finding.evidence}`)
+		.update(`${rule}\n${path}\n${anchor}`)
 		.digest("hex")
 		.slice(0, 16);
 }
 
+/**
+ * The source anchor of one finding (specs/github.md finding comments).
+ *
+ * The anchor is the exact text from the first through the last finding line
+ * in the finding revision — the head revision, or the base revision for a
+ * deleted file. Line separators are represented as `\n`, and a final line
+ * break is omitted, so the digest input carries no closing newline.
+ */
+export function findingSourceAnchor(
+	content: string,
+	lines: [number, number],
+): string {
+	return content
+		.split("\n")
+		.slice(lines[0] - 1, lines[1])
+		.join("\n");
+}
+
 /** The hidden marker on a finding comment's first line (specs/github.md). */
-function findingCommentMarker(finding: ReportedFinding): string {
-	return `<!-- standards:finding:v1:${findingFingerprint(finding)} -->`;
+function findingCommentMarker(
+	finding: ReportedFinding,
+	anchor: string,
+): string {
+	return `<!-- standards:finding:v1:${findingFingerprint(finding.rule, finding.path, anchor)} -->`;
 }
 
 /**
@@ -610,8 +640,10 @@ export function renderSummaryComment(
  * and the reason in bold, a GitHub `suggestion` block when the finding has
  * an applicable suggested change, the guidance and references as plain
  * lines, and a footer with the level and the rule id. It quotes no evidence
- * — the annotated lines sit directly above it. `includeSuggestion` is false
- * for the retry after GitHub rejects a suggestion-bearing comment.
+ * — the annotated lines sit directly above it. `anchor` is the finding's
+ * source anchor, which the marker's fingerprint is computed from.
+ * `includeSuggestion` is false for the retry after GitHub rejects a
+ * suggestion-bearing comment.
  *
  * A suggested change is applicable only when the complete comment fits the
  * surface limit; when it does not, the action omits the suggestion block
@@ -620,17 +652,18 @@ export function renderSummaryComment(
 export function renderFindingComment(
 	finding: ReportedFinding,
 	context: ReportRenderContext,
+	anchor: string,
 	includeSuggestion = true,
 ): string {
 	const withSuggestion =
 		includeSuggestion && finding.suggested_change !== undefined
-			? renderFindingCommentBody(finding, context, true)
+			? renderFindingCommentBody(finding, context, anchor, true)
 			: undefined;
 	const body =
 		withSuggestion !== undefined &&
 		withSuggestion.length <= SURFACE_CHARACTER_LIMIT
 			? withSuggestion
-			: renderFindingCommentBody(finding, context, false);
+			: renderFindingCommentBody(finding, context, anchor, false);
 	return clampSurface(body);
 }
 
@@ -638,6 +671,7 @@ export function renderFindingComment(
 function renderFindingCommentBody(
 	finding: ReportedFinding,
 	context: ReportRenderContext,
+	anchor: string,
 	includeSuggestion: boolean,
 ): string {
 	const emoji = isBlockingLevel(finding.level) ? "🛑" : "🟡";
@@ -657,7 +691,7 @@ function renderFindingCommentBody(
 		`<sub>${finding.level} · \`${finding.rule}\` · Standards review</sub>`,
 	];
 	// The marker joins with a line break so it stays the first line.
-	return `${findingCommentMarker(finding)}\n${sections.join("\n\n")}`;
+	return `${findingCommentMarker(finding, anchor)}\n${sections.join("\n\n")}`;
 }
 
 /** Render the check run summary for one review report (specs/github.md). */

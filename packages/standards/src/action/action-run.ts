@@ -9,7 +9,7 @@ import { formatValidationError } from "../cli/commands/validate-diagnostic.js";
 import { loadRules } from "../config/configuration-resolver.js";
 import type { Rule } from "../config/index.js";
 import { createAutomationModels } from "../credentials/models-runtime.js";
-import type { ReviewReport } from "../review/review-report.js";
+import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
 import { runReview } from "../review/run-review.js";
 import type { ActionContext } from "./action-context.js";
 import {
@@ -23,6 +23,7 @@ import {
 	createActionRuntime,
 	createCheckRun,
 	createFindingComments,
+	readFindingAnchors,
 	updateCheckRun,
 	upsertSummaryComment,
 } from "./action-runner.js";
@@ -149,6 +150,16 @@ export async function runAction(
 					: "Non-compliant",
 			summary: renderCheckRunSummary(report.report, report.renderContext),
 		});
+		// The fingerprint is computed from the file text in the checkout,
+		// never from model output (specs/github.md finding comments). The
+		// anchor of a deleted file comes from the base revision, which the
+		// checkout still holds.
+		const anchors = await readFindingAnchors(
+			context.workspace,
+			report.renderContext.mergeBaseSha,
+			report.report.findings,
+		);
+		const readAnchor = (finding: ReportedFinding) => anchors.get(finding) ?? "";
 		const unanchored = await createFindingComments(
 			github,
 			{
@@ -157,8 +168,14 @@ export async function runAction(
 				headSha: context.headSha,
 			},
 			report.report.findings,
+			readAnchor,
 			(finding, includeSuggestion) =>
-				renderFindingComment(finding, report.renderContext, includeSuggestion),
+				renderFindingComment(
+					finding,
+					report.renderContext,
+					readAnchor(finding),
+					includeSuggestion,
+				),
 		);
 		const hasEntries =
 			report.report.findings.length > 0 ||

@@ -336,6 +336,12 @@ suppressed finding skips verification and appears in the report as
 suppressed; it cannot change the conclusion, so verifying it would spend
 tokens on nothing.
 
+This comparison does not use `evidence`, `reason`, or `suggested_change`.
+These fields are agent output and can differ between evaluations of the same
+change. GitHub publishing applies the same rule, path, and overlapping-range
+identity to finding comments that GitHub can map to the current diff, as
+defined in [Standards GitHub action](./github.md).
+
 Each remaining finding runs as one independent agent invocation with fresh
 context: the rule fields from evaluation, the finding, its candidate suggested
 change when present, and the code region around `lines`. The verifier does not
