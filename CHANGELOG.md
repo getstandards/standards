@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.0](https://github.com/getstandards/standards/compare/0.1.1...0.2.0) (2026-08-25)
+
+
+### Features
+
+* add optional suggestions related to a finding ([#23](https://github.com/getstandards/standards/issues/23)) ([a06e742](https://github.com/getstandards/standards/commit/a06e74219475735da6493e1778d7166df8ca885b))
+
+
+### Bug Fixes
+
+* let the review agent repair an invalid output tool call ([#24](https://github.com/getstandards/standards/issues/24)) ([cd80405](https://github.com/getstandards/standards/commit/cd80405bfe68982d6fdfc518194b77743ed468d6))
+* make finding comment identity stable across runs ([#25](https://github.com/getstandards/standards/issues/25)) ([362e692](https://github.com/getstandards/standards/commit/362e69283cc8fb6584a308b7633550bf23c05234))
+* **renovate:** match pnpm minimum release age ([d28d401](https://github.com/getstandards/standards/commit/d28d401eb8f10bf6dd0eecc32add0c338e80762f))
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency @earendil-works/pi-ai to v0.84.3 ([#22](https://github.com/getstandards/standards/issues/22)) ([e6caa19](https://github.com/getstandards/standards/commit/e6caa19022ca4379c7c6b3748c94196590c39ba3))
+* **deps:** update getstandards/standards action to v0.1.1 ([#18](https://github.com/getstandards/standards/issues/18)) ([128e9c0](https://github.com/getstandards/standards/commit/128e9c0889e8f56cfc9d88049623f708a1007fac))
+* **deps:** update renovatebot/github-action action to v46.2.4 ([#20](https://github.com/getstandards/standards/issues/20)) ([fa9f860](https://github.com/getstandards/standards/commit/fa9f860042718dd92d79503233e25e91eca30ea7))
+* update README.md ([c1ab34f](https://github.com/getstandards/standards/commit/c1ab34f58a4fab8269c0ec78f753a00dee20a8bc))
+
 ## [0.1.1](https://github.com/getstandards/standards/compare/0.1.0...0.1.1) (2026-08-23)
 
 
