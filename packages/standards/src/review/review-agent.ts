@@ -32,7 +32,8 @@ export type ReviewProviderErrorKind =
 	| "provider-error"
 	| "context-overflow"
 	| "aborted"
-	| "no-structured-output";
+	| "no-structured-output"
+	| "invalid-output";
 
 /**
  * A review agent invocation that failed against a provider.
@@ -113,6 +114,7 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 	// Greedy decoding keeps repeated reviews of the same change as stable as
 	// the provider allows.
 	let sendTemperature = true;
+	let invalidOutputCalls = 0;
 
 	for (let turn = 0; turn < maxTurns; turn += 1) {
 		const message = await retryAssistantCall(
@@ -124,6 +126,7 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 			request.retryPolicy ?? DEFAULT_RETRY_POLICY,
 			request.signal,
 		);
+
 		addMessageUsage(usage, message.usage);
 
 		// Some providers accept only their default temperature (OpenCode's
@@ -138,16 +141,58 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		const toolCalls = message.content.filter(
 			(block): block is ToolCall => block.type === "toolCall",
 		);
+
 		const outputCall = toolCalls.find(
 			(call) => call.name === request.outputTool.name,
 		);
+
 		if (outputCall !== undefined) {
-			const toolArguments = validateToolArguments(
-				request.outputTool,
-				outputCall,
-			) as Static<OutputToolSchema>;
+			let toolArguments: Static<OutputToolSchema>;
+			try {
+				toolArguments = validateToolArguments(
+					request.outputTool,
+					outputCall,
+				) as Static<OutputToolSchema>;
+			} catch (error) {
+				// Agent output that does not match the required structure is a
+				// transient failure (specs/review.md provider failures): let the
+				// model repair the call instead of failing the review. The turn
+				// cap below bounds how often we ask. Every tool call gets a tool
+				// result, so the transcript stays valid on providers that require
+				// the pairing, and sibling reads are not lost.
+				invalidOutputCalls += 1;
+				for (const call of toolCalls) {
+					if (call === outputCall) {
+						context.messages.push({
+							role: "toolResult",
+							toolCallId: call.id,
+							toolName: call.name,
+							content: [
+								{
+									type: "text",
+									text:
+										`The ${request.outputTool.name} arguments did not match ` +
+										`the required structure:\n\n${String(error)}\n\n` +
+										`Call ${request.outputTool.name} again with arguments ` +
+										`that match the schema. Do not answer in prose.`,
+								},
+							],
+							isError: true,
+							timestamp: Date.now(),
+						});
+					} else {
+						context.messages.push(
+							await executeReadHeadFile(request.headCheckoutDir, call),
+						);
+					}
+				}
+
+				continue;
+			}
+
 			return { output: request.parseOutput(toolArguments), usage };
 		}
+
 		if (toolCalls.length === 0) {
 			context.messages.push({
 				role: "user",
@@ -156,6 +201,7 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 			});
 			continue;
 		}
+
 		for (const call of toolCalls) {
 			context.messages.push(
 				await executeReadHeadFile(request.headCheckoutDir, call),
@@ -163,6 +209,16 @@ export async function runReviewAgent<OutputToolSchema extends TSchema, Output>(
 		}
 	}
 
+	if (invalidOutputCalls > 0) {
+		throw new ReviewProviderError(
+			request.step,
+			request.model.provider,
+			request.model.id,
+			"invalid-output",
+			`The model returned an invalid ${request.outputTool.name} call ` +
+				`${invalidOutputCalls} times within ${maxTurns} turns.`,
+		);
+	}
 	throw new ReviewProviderError(
 		request.step,
 		request.model.provider,

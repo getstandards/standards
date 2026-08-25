@@ -51,7 +51,9 @@ const reportRuleVerdictsTool = {
 						}),
 						reason: Type.String({
 							description:
-								"One or two sentences that connect the evidence to the rule.",
+								"One or two sentences that connect the evidence to the rule. " +
+								"The value is one plain string: never an object, never JSON or " +
+								"markup, and never a container for suggested_change.",
 						}),
 						suggested_change: Type.Optional(
 							Type.String({
@@ -59,7 +61,8 @@ const reportRuleVerdictsTool = {
 									"The exact replacement for every line from first_line through " +
 									"last_line, without a Markdown fence, with \\n between replacement " +
 									"lines and no final line break. Omit it when you cannot make a " +
-									"small, exact change that resolves the finding.",
+									"small, exact change that resolves the finding. It is a separate " +
+									"field next to reason, never nested inside reason.",
 							}),
 						),
 					}),
@@ -71,6 +74,10 @@ const reportRuleVerdictsTool = {
 			}),
 		),
 	}),
+	// "prefer" instead of "require": providers behind an anthropic-messages
+	// endpoint without a compat.supportsStrictTools flag (MiniMax, Moonshot)
+	// reject "require". With "prefer" they fall back to unconstrained tool
+	// calls, and the agent loop in review-agent.ts recovers malformed output.
 	constrainedSampling: { type: "json_schema", strict: "prefer" },
 } as const;
 
