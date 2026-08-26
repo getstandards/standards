@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Standards Review
-        uses: getstandards/standards@f34fd77479cd24aa8dfc894081a6e3f23e9746ac # v0.1.1
+        uses: getstandards/standards@6463b238785f13ba7a343ce45f4180ec700d02ca # v0.2.0
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
