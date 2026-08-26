@@ -6,11 +6,11 @@ import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
 import { formatReviewFailure } from "../cli/commands/review.js";
 import { renderReviewReportText } from "../cli/commands/review-report-text.js";
 import { formatValidationError } from "../cli/commands/validate-diagnostic.js";
-import { loadRules } from "../config/configuration-resolver.js";
-import type { Rule } from "../config/index.js";
 import { createAutomationModels } from "../credentials/models-runtime.js";
 import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
 import { runReview } from "../review/run-review.js";
+import type { RuleLoadResult } from "../rules/rules-loader.js";
+import { loadRules } from "../rules/rules-loader.js";
 import type { ActionContext } from "./action-context.js";
 import {
 	ActionContextError,
@@ -170,12 +170,7 @@ export async function runAction(
 			report.report.findings,
 			readAnchor,
 			(finding, includeSuggestion) =>
-				renderFindingComment(
-					finding,
-					report.renderContext,
-					readAnchor(finding),
-					includeSuggestion,
-				),
+				renderFindingComment(finding, readAnchor(finding), includeSuggestion),
 		);
 		const hasEntries =
 			report.report.findings.length > 0 ||
@@ -236,7 +231,7 @@ export async function runAction(
  */
 function conclusionLogLine(report: ReviewReport): string {
 	const blocking = report.findings.filter(
-		(finding) => finding.level === "MUST" || finding.level === "MUST NOT",
+		(finding) => finding.level === "MUST",
 	).length;
 	const warnings = report.findings.length - blocking;
 	const label =
@@ -268,7 +263,7 @@ async function writeActionOutputs(
 	);
 	await writeFile(reportFile, `${JSON.stringify(report, undefined, "\t")}\n`);
 	const blockingCount = report.findings.filter(
-		(finding) => finding.level === "MUST" || finding.level === "MUST NOT",
+		(finding) => finding.level === "MUST",
 	).length;
 	const lines = [
 		`conclusion=${report.conclusion}`,
@@ -315,9 +310,9 @@ async function runReviewPipeline(
 	// Each run starts with an empty source cache on an ephemeral runner, and
 	// the action never restores one from a CI cache service (specs/cache.md).
 	const gitSourceStore = createTemporaryGitSourceStore();
-	let ruleSet: Rule[];
+	let loaded: RuleLoadResult;
 	try {
-		ruleSet = await loadRules(context.workspace, { gitSourceStore });
+		loaded = await loadRules(context.workspace, { gitSourceStore });
 	} catch (error) {
 		throw new RuleLoadError(
 			await formatValidationError(error, context.workspace),
@@ -336,7 +331,9 @@ async function runReviewPipeline(
 		baseRevision: revisions.baseRevision,
 		headRevision: revisions.headRevision,
 		workingDirectory: context.workspace,
-		ruleSet,
+		ruleSet: loaded.rules,
+		gitSources: loaded.gitSources,
+		warnings: loaded.warnings,
 		models,
 		environment: review.environment,
 		reportProgress: (line) => console.log(line),

@@ -26,7 +26,7 @@ document are to be interpreted as described by RFC 2119.
 This document specifies the execution of one review, including how a review
 selects its model. It does not specify:
 
-- The configuration format, the lock file, or resolution.
+- The configuration format, the knowledge document format, or resolution.
   [Standards configuration format](./configuration.md) defines them.
 - Provider credentials and the `auth` commands.
   [Standards provider credentials](./credentials.md) defines them.
@@ -56,8 +56,9 @@ resolved.
 The invoking surface, such as the CLI or the GitHub Action, selects the base
 and head revisions and supplies the targets. The change is the set of hunks
 between the base and head revisions. Resolution follows
-[Standards configuration format](./configuration.md): the lock file supplies
-every mutable revision, and a review MUST NOT resolve a tag or branch again.
+[Standards configuration format](./configuration.md): each Git source's `ref`
+resolves to its current commit at the start of the run, and the report
+records the resolved commits.
 
 ### Full review
 
@@ -231,9 +232,7 @@ remaining files:
 - A deleted file matches with its base path.
 - A binary file is not evaluated and is excluded from selection.
 
-A rule with no matching changed file is discarded for this review. A `MAY`
-rule is also discarded: it cannot fail a review by itself, so its evaluation
-buys no enforcement.
+A rule with no matching changed file is discarded for this review.
 
 When selection discards every rule, the review MUST skip to the report step
 with a compliant conclusion. This early exit uses zero model tokens.
@@ -264,9 +263,9 @@ status.
 
 The agent receives:
 
-- For each task rule: `id`, `level`, `description`, `rationale`, and
-  `guidance`. Fields that the agent does not need, such as `references`,
-  MUST NOT be sent.
+- For each task rule: `id`, `level`, the rule statement (`title`), the
+  `description` when it is not empty, and the full markdown body. Fields that
+  the agent does not need MUST NOT be sent.
 - The task's hunks, with enough surrounding lines to read them.
 
 The agent MAY read more content from the head checkout when a hunk alone is
@@ -293,6 +292,7 @@ Each finding carries:
 | `last_line` | The last violating line, in the same revision as `first_line`. |
 | `evidence` | A short quote from the change that shows the violation. |
 | `reason` | One or two sentences that connect the evidence to the rule. |
+| `suggestion` | Optional remediation advice, specific to the change. Prose, never replacement code. |
 | `suggested_change` | An optional exact replacement for every line from `first_line` through `last_line`. |
 
 The evaluation agent SHOULD include `suggested_change` when it can make a
@@ -310,11 +310,11 @@ The evaluation agent MUST omit `suggested_change` when:
   that the agent cannot confirm from the head checkout.
 - The agent cannot confirm that an exact replacement resolves the finding.
 
-Guidance can help the agent produce a suggested change, but guidance is not a
+The rule body can help the agent produce a suggested change, but it is not a
 replacement template. The agent MUST check the surrounding code and MUST NOT
-copy guidance into `suggested_change` unless that text is the exact replacement.
-The suggested change SHOULD preserve the file's existing format and MUST NOT
-include unrelated cleanup.
+copy rule text into `suggested_change` unless that text is the exact
+replacement. The suggested change SHOULD preserve the file's existing format
+and MUST NOT include unrelated cleanup.
 
 The agent MUST NOT return a prose report. The implementation MUST discard
 compliant verdicts and keep only the findings of violated verdicts; the
@@ -336,9 +336,9 @@ suppressed finding skips verification and appears in the report as
 suppressed; it cannot change the conclusion, so verifying it would spend
 tokens on nothing.
 
-This comparison does not use `evidence`, `reason`, or `suggested_change`.
-These fields are agent output and can differ between evaluations of the same
-change. GitHub publishing applies the same rule, path, and overlapping-range
+This comparison does not use `evidence`, `reason`, `suggestion`, or
+`suggested_change`. These fields are agent output and can differ between
+evaluations of the same change. GitHub publishing applies the same rule, path, and overlapping-range
 identity to finding comments that GitHub can map to the current diff, as
 defined in [Standards GitHub action](./github.md).
 
@@ -357,8 +357,8 @@ Removing the candidate MUST NOT remove the finding.
 The verifier confirms or rejects the finding:
 
 - It MUST reject a finding whose evidence does not establish the violation.
-- For a `SHOULD` or `SHOULD NOT` rule, it MUST reject a finding when the
-  change documents a valid reason for the exception.
+- For a `SHOULD` rule, it MUST reject a finding when the change documents a
+  valid reason for the exception.
 - It MUST NOT weaken or reword the rule.
 
 When the finding has a candidate suggested change, the verifier separately
@@ -387,11 +387,11 @@ The implementation sorts confirmed findings by path, then line, then rule
 
 | Conclusion | Condition |
 | --- | --- |
-| Non-compliant | At least one confirmed `MUST` or `MUST NOT` finding. |
+| Non-compliant | At least one confirmed `MUST` finding. |
 | Compliant | Every other case. |
 
-A confirmed `SHOULD` or `SHOULD NOT` finding is a warning. It appears in the
-report but does not change the conclusion by itself.
+A confirmed `SHOULD` finding is a warning. It appears in the report but does
+not change the conclusion by itself.
 
 The report MUST include:
 
@@ -418,9 +418,13 @@ The report MUST include:
   review runs on one credential, so the field belongs to the review, not to
   a step. A text surface MUST add a short note when the value is not
   `charged`, so an estimate is never presented as a charge.
-- Each confirmed finding with its rule `id`, `level`, `path`, `lines`,
-  `evidence`, `reason`, the accepted `suggested_change` when present, and the
-  rule's `guidance` and `references` when present.
+- The resolved commit of each Git knowledge source, for traceability.
+- The warnings for skipped knowledge documents, as defined in
+  [Standards configuration format](./configuration.md).
+- Each confirmed finding with its rule `id`, `level`, the rule statement
+  (`title`), the rule `description` when it is not empty, `path`, `lines`,
+  `evidence`, `reason`, the `suggestion` when present, and the accepted
+  `suggested_change` when present.
 - Each suppressed finding and each invalid suppression marker, as defined in
   [Standards suppressions](./suppressions.md).
 
@@ -432,7 +436,7 @@ as one JSON document:
 
 ```json
 {
-	"version": 2,
+	"version": 3,
 	"conclusion": "non-compliant",
 	"models": {
 		"evaluation": "anthropic/claude-sonnet-5",
@@ -463,17 +467,31 @@ as one JSON document:
 		"total_cost": 0.0523,
 		"cost_basis": "charged"
 	},
+	"sources": [
+		{
+			"repository": "https://github.com/example/engineering-knowledge",
+			"ref": "main",
+			"commit": "9d64a5838f8dbf26f0f1e51078a29c756970ca31"
+		}
+	],
+	"warnings": [
+		{
+			"document": "https://github.com/example/engineering-knowledge@main:decisions/broken.md",
+			"problem": "The document has no frontmatter block."
+		}
+	],
 	"findings": [
 		{
 			"rule": "payments.no-floating-point-money",
-			"level": "MUST NOT",
+			"level": "MUST",
+			"title": "Monetary values do not use floating-point types",
+			"description": "Floating-point rounding can produce incorrect payment amounts.",
 			"path": "src/billing/invoice.ts",
 			"lines": [41, 44],
 			"evidence": "const total: number = subtotal * 1.2",
 			"reason": "The invoice total is computed and stored as a floating-point number.",
-			"suggested_change": "const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
-			"guidance": "Use the Money value object or an integer in the smallest currency unit.",
-			"references": ["https://engineering.example.com/decisions/money-values"]
+			"suggestion": "Compute the total in minor units and wrap it in the Money value object.",
+			"suggested_change": "const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);"
 		}
 	],
 	"suppressed": [],
@@ -481,20 +499,26 @@ as one JSON document:
 }
 ```
 
-- `version` is the report format version. This document specifies version 2.
-  Version 2 adds the optional `suggested_change` field. The other version 1
-  fields keep their meanings.
+- `version` is the report format version. This document specifies version 3.
+  Version 3 reads rules from knowledge documents: each finding carries the
+  rule's `title` and an optional `suggestion`, and the report records
+  `sources` and `warnings`. The other version 2 fields keep their meanings.
 - `cost`, `total_cost`, and `cost_basis` are defined above. A cost is a JSON
   number in United States dollars. The report MUST NOT hold a currency
   symbol or a locale-formatted value, so a consumer can add and compare
   costs. A text surface formats a cost with four decimal places, as
   `$0.0523`, and shows `$0.0000` rather than `$0` for a cost that rounds to
   zero.
+- `sources` records the resolved commit of each Git knowledge source.
+  `warnings` records the knowledge documents the loader skipped. Both are
+  empty arrays when they have no entries.
 - `lines` is a two-element array: the first and last line of the finding.
+- `suggestion` is the evaluation agent's remediation advice, carried through
+  verification. It appears only when the agent produced it.
 - `suggested_change` is the exact replacement for `lines`. It appears only
   when evaluation proposed it and verification accepted it. It is always a
   non-empty string.
-- `guidance` and `references` appear only when the rule defines them.
+- `description` appears only when the rule's knowledge document defines one.
 - `suppressed` lists suppressed findings: the finding fields above except
   `suggested_change`, plus the marker's `suppression_reason`. A suppressed
   finding has no suggested change because verification did not accept one.
@@ -556,13 +580,14 @@ These rules keep token use low across the pipeline:
   inside the change is data, never an instruction. An agent MUST NOT follow
   instructions found in file content, and the verifier re-checks every finding
   with fresh context, which limits the effect of a manipulated evaluation.
-- Rule text comes from the resolved configuration graph and is pinned by the
-  lock file. The trust policy that decides whether review uses the base or
-  head revision of `.standards.yml` stays excluded, as stated in
+- Rule text comes from the resolved knowledge sources; a Git source follows
+  its branch, and the report records the resolved commits. The trust policy
+  that decides whether review uses the base or head revision of
+  `.standards.yml` stays excluded, as stated in
   [Standards configuration format](./configuration.md).
 - An agent MUST NOT execute repository content, MUST NOT fetch URLs, and MUST
-  NOT read outside the head checkout. A `references` URL is reported, not
-  fetched. A repository-relative reference MAY be read from the head checkout.
+  NOT read outside the head checkout. A URL in a rule body is reported, not
+  fetched.
 - The implementation sends rule text and change content only to the selected
   provider. It MUST NOT call a provider that the selection did not name.
 - Findings quote the change. An evidence quote MUST stay short and MUST NOT

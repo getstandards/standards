@@ -22,8 +22,8 @@ document are to be interpreted as described by RFC 2119.
 
 A test file is named `*.standards-test.yml`. `standards test` MUST discover
 every test file under the current working directory, excluding the `.git`
-directory. Test files SHOULD live next to the configuration file that
-defines the rules they test.
+directory. Test files SHOULD live next to the knowledge documents that
+define the rules they test.
 
 A test file MUST contain one YAML document:
 
@@ -108,9 +108,9 @@ complete.
 
 A rule test is an integration test against a model, and a model is not
 deterministic. A test that passes only sometimes is a signal about the rule,
-not about the runner: the rule's `description` is not testable enough for an
-agent to apply consistently. The fix is to tighten the rule text, not to
-retry the test.
+not about the runner: the rule's statement and body are not testable enough
+for an agent to apply consistently. The fix is to tighten the rule text, not
+to retry the test.
 
 ## Version 1 exclusions
 

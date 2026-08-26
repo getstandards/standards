@@ -28,7 +28,11 @@ standards-allow <rule-id>: <reason>
 ```
 
 - `standards-allow` is the literal token.
-- `<rule-id>` is one rule identifier from the resolved rule set.
+- `<rule-id>` is one rule identifier from the resolved rule set, or one of a
+  rule's aliases. An alias is the derived id of a superseded knowledge
+  document, as defined in
+  [Standards configuration format](./configuration.md); a marker that names
+  an alias suppresses the final rule of the chain.
 - `<reason>` is required, non-empty free text that ends at the end of the
   line.
 
@@ -53,7 +57,8 @@ anything; the report MUST list it as invalid.
 The implementation MUST read suppressions from the head revision of each
 changed file. A suppression applies to a finding when all of these hold:
 
-- The finding's rule `id` equals the marker's `<rule-id>`.
+- The finding's rule `id`, or one of that rule's aliases, equals the
+  marker's `<rule-id>`.
 - The finding is in the same file as the marker.
 - The finding's line range includes the marker's line or the line directly
   after it.
@@ -79,9 +84,9 @@ Suppressions are visible, or they are a hole. The report defined in
 
 - Each suppressed finding with its rule `id`, `level`, `path`, `lines`, and
   the marker's reason.
-- Each invalid marker: a missing reason, or a `<rule-id>` that is not in the
-  resolved rule set. A dead or misspelled suppression must be seen, not
-  skipped.
+- Each invalid marker: a missing reason, or a `<rule-id>` that names neither
+  a resolved rule nor an alias. A dead or misspelled suppression must be
+  seen, not skipped.
 
 On GitHub, suppressed findings appear in the check run summary and the
 summary comment through the report, but MUST NOT produce finding comments,

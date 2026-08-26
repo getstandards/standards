@@ -5,7 +5,7 @@ import {
 	type Static,
 	Type,
 } from "@earendil-works/pi-ai";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import {
 	addInvocationUsage,
 	emptyStepUsage,
@@ -55,6 +55,15 @@ const reportRuleVerdictsTool = {
 								"The value is one plain string: never an object, never JSON or " +
 								"markup, and never a container for suggested_change.",
 						}),
+						suggestion: Type.Optional(
+							Type.String({
+								description:
+									"One or two sentences of remediation advice specific to this " +
+									"change: what to do instead, in this file. Omit it when the " +
+									"finding needs no advice beyond the reason. It is prose, never " +
+									"replacement code.",
+							}),
+						),
 						suggested_change: Type.Optional(
 							Type.String({
 								description:
@@ -87,6 +96,8 @@ const EVALUATION_SYSTEM_PROMPT = `You review a code change against a set of rule
 You receive changed files, the rules selected for each file, and the change hunks. Judge every rule of every file and return one verdict for each rule and file pair. A rule applies to a file as a first filter, not as proof of relevance: mark a rule compliant when it does not apply to the change you see. Mark a rule violated only when the change shows the violation, and attach one finding per violation.
 
 Report line ranges in the head revision, or in the base revision for a deleted file. Keep each evidence quote short: quote only what the violation needs.
+
+Attach a suggestion to a finding when you can give remediation advice that is specific to this change: one or two sentences that say what to do instead in this file. Do not restate the rule and do not put replacement code in it.
 
 Attach a suggested_change to a finding only when you can make a small, exact replacement for every line from first_line through last_line that resolves the finding. The value is replacement text without a Markdown fence; use \n between replacement lines and no final line break. It MUST replace the complete range and MUST NOT describe edits outside it. Omit suggested_change when the finding is in a deleted file, when the correct change only deletes those lines, when the change needs edits outside the range or in another file, when the correct replacement needs a product decision, a secret, or information you cannot confirm from the head checkout, or when you cannot confirm that an exact replacement resolves the finding. Check the surrounding code first; do not copy rule guidance into suggested_change unless that text is the exact replacement. Preserve the file's existing format and do not include unrelated cleanup.
 
@@ -179,7 +190,9 @@ function flattenVerdicts(verdicts: ReportedRuleVerdicts): Finding[] {
 						lines: [finding.first_line, finding.last_line],
 						evidence: finding.evidence,
 						reason: finding.reason,
-						// An agent's empty suggested_change means none.
+						// An agent's empty suggestion or suggested_change means none.
+						suggestion:
+							finding.suggestion === "" ? undefined : finding.suggestion,
 						suggestedChange:
 							finding.suggested_change === ""
 								? undefined
@@ -212,13 +225,23 @@ function formatRule(rule: Rule): string {
 	const lines = [
 		`- id: ${rule.id}`,
 		`  level: ${rule.level}`,
-		`  description: ${rule.description}`,
-		`  rationale: ${rule.rationale}`,
+		`  rule: ${rule.title}`,
 	];
-	if (rule.guidance !== undefined) {
-		lines.push(`  guidance: ${rule.guidance}`);
+	if (rule.description !== "") {
+		lines.push(`  description: ${rule.description}`);
+	}
+	if (rule.body !== "") {
+		lines.push("  rationale: |", indentBlock(rule.body, "    "));
 	}
 	return lines.join("\n");
+}
+
+/** Indent every line of a markdown body under its YAML-like block label. */
+function indentBlock(text: string, indent: string): string {
+	return text
+		.split("\n")
+		.map((line) => `${indent}${line}`)
+		.join("\n");
 }
 
 /** Render a changed file's hunks as unified diff text for the agent. */

@@ -2,25 +2,22 @@ export {
 	ConfigurationLoadError,
 	loadConfiguration,
 } from "./configuration-loader.js";
-export {
-	ConfigurationResolutionError,
-	loadLocalRules,
-	loadRules,
-} from "./configuration-resolver.js";
 export type {
+	AppliesTo,
 	Configuration,
-	ExtensionSource,
-	GitRevision,
-	Rule,
+	FolderRule,
+	GitKnowledgeSource,
+	KnowledgeSource,
+	LocalKnowledgeSource,
+	RequirementLevel,
 } from "./configuration-schema.js";
 export {
-	branchRevisionSchema,
+	appliesToSchema,
+	branchNameSchema,
 	commitObjectIdSchema,
 	configurationSchema,
-	extensionSourceSchema,
-	gitRevisionSchema,
+	folderRuleSchema,
+	knowledgeSourceSchema,
 	repositoryUrlSchema,
 	requirementLevels,
-	ruleSchema,
-	tagRevisionSchema,
 } from "./configuration-schema.js";

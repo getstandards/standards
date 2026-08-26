@@ -1,11 +1,17 @@
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	realpath,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { select } from "@inquirer/prompts";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configurationSchema } from "../config/configuration-schema.js";
-import { loadLockfile } from "../lockfile/lockfile-loader.js";
 import { runGit } from "../utils/git.js";
 import { parseSingleYamlDocument } from "../utils/yaml.js";
 import type { CliOutput } from "./cli-context.js";
@@ -60,6 +66,17 @@ async function createRepository(configuration: string): Promise<string> {
 	return repositoryRoot;
 }
 
+/** Write one knowledge document with the given frontmatter lines. */
+async function writeRuleDocument(
+	repositoryRoot: string,
+	documentPath: string,
+	frontmatter: string,
+): Promise<void> {
+	const absolutePath = path.join(repositoryRoot, ...documentPath.split("/"));
+	await mkdir(path.dirname(absolutePath), { recursive: true });
+	await writeFile(absolutePath, `---\n${frontmatter}---\n\nBody text.\n`);
+}
+
 function captureOutput(): {
 	output: CliOutput;
 	stdout: string[];
@@ -79,20 +96,24 @@ function captureOutput(): {
 
 describe("runCli", () => {
 	it("summarizes the resolved configuration", async () => {
-		const repositoryRoot = await createRepository(`version: 1
-rules:
-  - id: example.rule
-    level: MUST
-    description: Example rule.
-    rationale: Example rationale.
-  - id: example.recommendation
-    level: SHOULD
-    description: Example recommendation.
-    rationale: Example rationale.
+		const repositoryRoot = await createRepository(`version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+      - folder: practices
+        level: SHOULD
 `);
-		await writeFile(
-			path.join(repositoryRoot, ".standards.lock"),
-			"version: 1\nsources: []\n",
+		await writeRuleDocument(
+			repositoryRoot,
+			"knowledge/decisions/example-rule.md",
+			"title: The example rule statement.\nstatus: stable\n",
+		);
+		await writeRuleDocument(
+			repositoryRoot,
+			"knowledge/practices/example-recommendation.md",
+			"title: The example recommendation statement.\nstatus: stable\n",
 		);
 		const canonicalRepositoryRoot = await realpath(repositoryRoot);
 		const { output, stdout, stderr } = captureOutput();
@@ -105,15 +126,59 @@ rules:
 
   Repository:     ${canonicalRepositoryRoot}
   Entry file:     .standards.yml
-  Lock file:      .standards.lock (present)
   Resolved rules: 2
   Levels:         MUST: 1, SHOULD: 1`,
 		]);
 		expect(stderr).toEqual([]);
 	});
 
+	it("validates an empty source list", async () => {
+		const repositoryRoot = await createRepository("version: 2\nsources: []\n");
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["validate"], repositoryRoot, output);
+
+		expect(exitStatus).toBe(0);
+		expect(stderr).toEqual([]);
+		expect(stdout[0]).toContain("Resolved rules: 0");
+		expect(stdout[0]).toContain("Levels:         none");
+	});
+
+	it("warns about a skipped knowledge document", async () => {
+		const repositoryRoot = await createRepository(`version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+`);
+		await writeRuleDocument(
+			repositoryRoot,
+			"knowledge/decisions/good-rule.md",
+			"title: The good rule statement.\nstatus: stable\n",
+		);
+		const badDocumentPath = path.join(
+			repositoryRoot,
+			"knowledge",
+			"decisions",
+			"bad-rule.md",
+		);
+		await writeFile(badDocumentPath, "No frontmatter.\n");
+		const { output, stdout, stderr } = captureOutput();
+
+		const exitStatus = await runCli(["validate"], repositoryRoot, output);
+
+		expect(exitStatus).toBe(0);
+		expect(stderr).toEqual([]);
+		expect(stdout[0]).toContain("Resolved rules: 1");
+		expect(stdout[0]).toContain("Warnings:");
+		expect(stdout[0]).toContain(
+			"knowledge/decisions/bad-rule.md: The document has no frontmatter block.",
+		);
+	});
+
 	it("reports an invalid configuration", async () => {
-		const repositoryRoot = await createRepository("version: 2\n");
+		const repositoryRoot = await createRepository("version: 1\n");
 		const canonicalRepositoryRoot = await realpath(repositoryRoot);
 		const { output, stdout, stderr } = captureOutput();
 
@@ -130,15 +195,15 @@ rules:
   Field:      version
 
 Problem:
-  Invalid input: expected 1
+  Invalid input: expected 2
 
 Next action:
-  Set 'version' to 1 in '.standards.yml', then run 'standards validate' again.`,
+  Set 'version' to 2 in '.standards.yml', then run 'standards validate' again.`,
 		]);
 	});
 
 	it("explains how to fix a missing entry file", async () => {
-		const repositoryRoot = await createRepository("version: 1\n");
+		const repositoryRoot = await createRepository("version: 2\n");
 		await rm(path.join(repositoryRoot, ".standards.yml"));
 		const canonicalRepositoryRoot = await realpath(repositoryRoot);
 		const { output, stdout, stderr } = captureOutput();
@@ -149,28 +214,10 @@ Next action:
 		expect(stdout).toEqual([]);
 		expect(stderr[0]).toContain("Category:   Configuration resolution");
 		expect(stderr[0]).toContain(`Repository: ${canonicalRepositoryRoot}`);
-		expect(stderr[0]).toContain("Cannot access configuration");
+		expect(stderr[0]).toContain("Cannot read configuration");
 		expect(stderr[0]).toContain(
 			"Create '.standards.yml' at the repository root",
 		);
-	});
-
-	it("identifies an invalid lock-file field", async () => {
-		const repositoryRoot = await createRepository("version: 1\n");
-		await writeFile(
-			path.join(repositoryRoot, ".standards.lock"),
-			"version: 2\nsources: []\n",
-		);
-		const { output, stdout, stderr } = captureOutput();
-
-		const exitStatus = await runCli(["validate"], repositoryRoot, output);
-
-		expect(exitStatus).toBe(1);
-		expect(stdout).toEqual([]);
-		expect(stderr[0]).toContain("Category:   Lock-file validation");
-		expect(stderr[0]).toContain("Source:     .standards.lock");
-		expect(stderr[0]).toContain("Field:      version");
-		expect(stderr[0]).toContain("Set 'version' to 1 in '.standards.lock'");
 	});
 
 	it("creates an empty Standards configuration with init", async () => {
@@ -193,7 +240,7 @@ Next action:
 	});
 
 	it("fails init when the entry file already exists", async () => {
-		const repositoryRoot = await createRepository("version: 1\n");
+		const repositoryRoot = await createRepository("version: 2\n");
 		const { output, stdout, stderr } = captureOutput();
 
 		const exitStatus = await runCli(["init"], repositoryRoot, output);
@@ -268,73 +315,6 @@ Next action:
 		);
 	});
 
-	it("updates the lock file", async () => {
-		const repositoryRoot = await createRepository("version: 1\n");
-		const canonicalRepositoryRoot = await realpath(repositoryRoot);
-		const { output, stdout, stderr } = captureOutput();
-
-		const exitStatus = await runCli(["lock"], repositoryRoot, output);
-
-		expect(exitStatus).toBe(0);
-		expect(stdout).toEqual([
-			`Standards lock file updated.
-
-  Repository:      ${canonicalRepositoryRoot}
-  Lock file:       .standards.lock
-  Mutable sources: 0
-  Branches:        0
-  Tags:            0`,
-		]);
-		expect(stderr).toEqual([]);
-		expect(
-			loadLockfile(
-				await readFile(path.join(repositoryRoot, ".standards.lock"), "utf8"),
-			),
-		).toEqual({ version: 1, sources: [] });
-
-		const secondExitStatus = await runCli(["lock"], repositoryRoot, output);
-		expect(secondExitStatus).toBe(0);
-		expect(stdout[1]).toContain("Standards lock file is already up to date.");
-	});
-
-	it("prints the configuration schema by default", async () => {
-		const { output, stdout, stderr } = captureOutput();
-
-		const exitStatus = await runCli(["schema"], "/unused", output);
-
-		expect(exitStatus).toBe(0);
-		expect(stderr).toEqual([]);
-		const document = JSON.parse(stdout[0] ?? "");
-		expect(document.$id).toBe(
-			"https://getstandards.dev/schemas/v1/standards.schema.json",
-		);
-		expect(document.title).toBe("Standards configuration");
-	});
-
-	it("prints the lock-file schema", async () => {
-		const { output, stdout, stderr } = captureOutput();
-
-		const exitStatus = await runCli(["schema", "lock"], "/unused", output);
-
-		expect(exitStatus).toBe(0);
-		expect(stderr).toEqual([]);
-		const document = JSON.parse(stdout[0] ?? "");
-		expect(document.$id).toBe(
-			"https://getstandards.dev/schemas/v1/standards-lock.schema.json",
-		);
-		expect(document.title).toBe("Standards lock file");
-	});
-
-	it("rejects an unknown schema target", async () => {
-		const { output, stdout, stderr } = captureOutput();
-
-		const exitStatus = await runCli(["schema", "bogus"], "/unused", output);
-
-		expect(exitStatus).toBe(1);
-		expect(stdout).toEqual([]);
-		expect(stderr[0]).toContain("Unknown schema target 'bogus'.");
-	});
-
 	it("prints help when no command is supplied", async () => {
 		const { output, stdout, stderr } = captureOutput();
 
@@ -344,6 +324,8 @@ Next action:
 		expect(stdout[0]).toContain("Usage: standards <command>");
 		expect(stdout[0]).toContain(`Standards ${VERSION}`);
 		expect(stdout[0]).toContain("█");
+		expect(stdout[0]).not.toContain("lock");
+		expect(stdout[0]).not.toContain("schema");
 		expect(stderr).toEqual([]);
 	});
 
@@ -497,14 +479,16 @@ Next action:
 		});
 	});
 
-	it("rejects unknown commands", async () => {
-		const { output, stdout, stderr } = captureOutput();
+	it("rejects unknown commands, including the removed lock and schema", async () => {
+		for (const command of ["unknown", "lock", "schema"]) {
+			const { output, stdout, stderr } = captureOutput();
 
-		const exitStatus = await runCli(["unknown"], "/unused", output);
+			const exitStatus = await runCli([command], "/unused", output);
 
-		expect(exitStatus).toBe(1);
-		expect(stdout).toEqual([]);
-		expect(stderr[0]).toContain("Unknown command 'unknown'.");
+			expect(exitStatus).toBe(1);
+			expect(stdout).toEqual([]);
+			expect(stderr[0]).toContain(`Unknown command '${command}'.`);
+		}
 	});
 
 	it("rejects command arguments", async () => {
@@ -610,7 +594,7 @@ Next action:
 	describe("review", () => {
 		/**
 		 * A Git repository whose only change between the base and head commits
-		 * is a Markdown file, while the one configured rule applies to
+		 * is a Markdown note, while the one configured rule applies to
 		 * TypeScript files. The review selects no rule, so it ends compliant
 		 * without a model invocation or a network call.
 		 */
@@ -618,16 +602,23 @@ Next action:
 			repositoryRoot: string;
 			baseRevision: string;
 		}> {
-			const repositoryRoot = await createRepository(`version: 1
-rules:
-  - id: example.rule
-    level: MUST
-    description: Example rule.
-    rationale: Example rationale.
-    applies_to:
-      include:
-        - "**/*.ts"
+			const repositoryRoot = await createRepository(`version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
 `);
+			await writeRuleDocument(
+				repositoryRoot,
+				"knowledge/decisions/example-rule.md",
+				`title: The example rule statement.
+status: stable
+applies_to:
+  include:
+    - "**/*.ts"
+`,
+			);
 			await runGit(["init", "-q", "-b", "main"], repositoryRoot);
 			await runGit(
 				["config", "user.email", "test@example.com"],
@@ -702,9 +693,11 @@ rules:
 			expect(stderr).toEqual([]);
 			expect(stdout).toHaveLength(1);
 			const report = JSON.parse(stdout[0] ?? "");
-			expect(report.version).toBe(2);
+			expect(report.version).toBe(3);
 			expect(report.conclusion).toBe("compliant");
 			expect(report.models.evaluation).toBe("anthropic/claude-sonnet-5");
+			expect(report.sources).toEqual([]);
+			expect(report.warnings).toEqual([]);
 		});
 
 		it("asks for --base or --all when the merge base is unresolvable", async () => {

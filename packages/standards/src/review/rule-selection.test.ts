@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import type { ChangedFile } from "./change-diff.js";
 import { selectRules } from "./rule-selection.js";
 
 function rule(overrides: Partial<Rule> & Pick<Rule, "id">): Rule {
 	return {
 		level: "MUST",
-		description: "description",
-		rationale: "rationale",
+		title: "rule statement",
+		description: "",
+		body: "rationale",
+		tags: [],
+		aliases: [],
 		...overrides,
 	};
 }
@@ -44,13 +47,6 @@ describe("selectRules", () => {
 		expect(selections[0]?.rules.map((selected) => selected.id)).toEqual([
 			"ts.rule",
 		]);
-	});
-
-	it("discards a MAY rule because it cannot fail a review", () => {
-		const rules: Rule[] = [rule({ id: "may.rule", level: "MAY" })];
-		const files = [changedFile({ path: "src/app.ts" })];
-
-		expect(selectRules(rules, files)).toEqual([]);
 	});
 
 	it("applies a rule without applies_to to every changed file", () => {

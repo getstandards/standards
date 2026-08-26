@@ -5,143 +5,185 @@ import {
 	loadConfiguration,
 } from "./configuration-loader.js";
 
-/** Build a minimal configuration that contains one applicability glob. */
-function createConfigurationWithGlob(glob: string): string {
-	return `
-version: 1
-rules:
-  - id: test.rule
-    level: MUST
-    description: Test rule.
-    rationale: Test rationale.
-    applies_to:
-      include:
-        - ${JSON.stringify(glob)}
-`;
-}
-
 describe("loadConfiguration", () => {
 	it("parses the complete configuration example", () => {
 		const configuration = loadConfiguration(`
 ---
-version: 1
+version: 2
 name: payments-service
 description: Standards for the payments service.
-extends:
-  - path: .standards/typescript.yml
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+      - folder: practices
+        level: SHOULD
   - git:
-      repository: https://github.com/acme/engineering-standards.git
-      revision:
-        tag: v2.1.0
-      path: rules/security.yml
-rules:
-  - id: payments.no-floating-point-money
-    level: MUST NOT
-    description: Monetary values must not use floating-point types.
-    rationale: Floating-point rounding can produce incorrect payment amounts.
-    applies_to:
-      include:
-        - src/**/*.{ts,tsx}
-      exclude:
-        - src/**/*.test.ts
-    guidance: Use the Money value object.
-    references:
-      - https://engineering.example.com/decisions/money-values
+      repository: https://github.com/example/engineering-knowledge
+      ref: main
+    rules:
+      - folder: decisions
+        level: MUST
 `);
 
 		assert.equal(configuration.name, "payments-service");
-		assert.equal(configuration.extends.length, 2);
-		assert.equal(configuration.rules[0]?.level, "MUST NOT");
+		assert.equal(configuration.sources.length, 2);
+		assert.deepEqual(configuration.sources[0], {
+			path: "./knowledge",
+			rules: [
+				{ folder: "decisions", level: "MUST" },
+				{ folder: "practices", level: "SHOULD" },
+			],
+		});
+		const gitSource = configuration.sources[1];
+		assert.ok(gitSource !== undefined && "git" in gitSource);
+		assert.equal(gitSource.git.ref, "main");
 	});
 
-	it("adds empty extension and rule lists to a minimal configuration", () => {
-		assert.deepEqual(loadConfiguration("version: 1\n"), {
-			version: 1,
-			extends: [],
-			rules: [],
+	it("adds an empty source list to a minimal configuration", () => {
+		assert.deepEqual(loadConfiguration("version: 2\n"), {
+			version: 2,
+			sources: [],
 		});
 	});
 
-	it("accepts anchors within one document", () => {
+	it("accepts a Git source without a ref and with a path", () => {
 		const configuration = loadConfiguration(`
-version: 1
-rules:
-  - id: test.first
-    level: SHOULD
-    description: Test rule.
-    rationale: Test rationale.
-    applies_to:
-      include: &paths
-        - src/**/*.ts
-      exclude: *paths
+version: 2
+sources:
+  - git:
+      repository: https://github.com/example/engineering-knowledge
+      path: bundles/backend
+    rules:
+      - folder: guides/clickhouse
+        level: SHOULD
 `);
 
-		assert.deepEqual(configuration.rules[0]?.applies_to?.exclude, [
-			"src/**/*.ts",
-		]);
+		const gitSource = configuration.sources[0];
+		assert.ok(gitSource !== undefined && "git" in gitSource);
+		assert.equal(gitSource.git.ref, undefined);
+		assert.equal(gitSource.git.path, "bundles/backend");
+		assert.equal(gitSource.rules[0]?.folder, "guides/clickhouse");
+	});
+
+	it("accepts SSH repository URLs in ssh and scp form", () => {
+		for (const repository of [
+			"ssh://git@github.com/example/engineering-knowledge.git",
+			"git@github.com:example/engineering-knowledge.git",
+		]) {
+			const configuration = loadConfiguration(`
+version: 2
+sources:
+  - git:
+      repository: ${JSON.stringify(repository)}
+    rules:
+      - folder: decisions
+        level: MUST
+`);
+			const gitSource = configuration.sources[0];
+			assert.ok(gitSource !== undefined && "git" in gitSource);
+			assert.equal(gitSource.git.repository, repository);
+		}
+	});
+
+	it("rejects configuration version 1", () => {
+		assert.throws(
+			() => loadConfiguration("version: 1\n"),
+			ConfigurationLoadError,
+		);
+	});
+
+	it("rejects a source without a rules list", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: ./knowledge
+`),
+			ConfigurationLoadError,
+		);
+	});
+
+	it("rejects overlapping folders of the same source", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: guides
+        level: MUST
+      - folder: guides/clickhouse
+        level: SHOULD
+`),
+			/sources\[0\]\.rules\[1\]\.folder: Folder 'guides\/clickhouse' overlaps rules\[0\]\.folder/,
+		);
+	});
+
+	it("accepts the same folder in two different sources", () => {
+		const configuration = loadConfiguration(`
+version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+  - path: ./more-knowledge
+    rules:
+      - folder: decisions
+        level: SHOULD
+`);
+
+		assert.equal(configuration.sources.length, 2);
+	});
+
+	it("rejects invalid folder paths", () => {
+		const invalidFolders = [
+			"/decisions",
+			"../decisions",
+			"decisions/",
+			"a/./b",
+		];
+
+		for (const folder of invalidFolders) {
+			assert.throws(
+				() =>
+					loadConfiguration(`
+version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: ${JSON.stringify(folder)}
+        level: MUST
+`),
+				ConfigurationLoadError,
+				folder,
+			);
+		}
 	});
 
 	it("rejects an unrecognized field with its YAML path", () => {
 		assert.throws(
-			() => loadConfiguration("version: 1\nextra: true\n", "rules.yml"),
+			() => loadConfiguration("version: 2\nextra: true\n", "rules.yml"),
 			/rules\.yml:extra: Unrecognized key: "extra"/,
 		);
 	});
 
 	it("rejects duplicate YAML mapping keys", () => {
 		assert.throws(
-			() => loadConfiguration("version: 1\nversion: 1\n"),
+			() => loadConfiguration("version: 2\nversion: 2\n"),
 			ConfigurationLoadError,
 		);
 	});
 
 	it("rejects more than one YAML document", () => {
 		assert.throws(
-			() => loadConfiguration("---\nversion: 1\n---\nversion: 1\n"),
+			() => loadConfiguration("---\nversion: 2\n---\nversion: 2\n"),
 			/Expected one YAML document, but found 2\./,
 		);
-	});
-
-	it("rejects duplicate rule identifiers", () => {
-		assert.throws(
-			() =>
-				loadConfiguration(`
-version: 1
-rules:
-  - id: test.rule
-    level: MUST
-    description: First.
-    rationale: Test.
-  - id: test.rule
-    level: SHOULD
-    description: Second.
-    rationale: Test.
-`),
-			/\.standards\.yml:rules\[1\]\.id/,
-		);
-	});
-
-	it("rejects invalid globs", () => {
-		const invalidGlobs = [
-			"/src/**/*.ts",
-			"../src/**/*.ts",
-			"src/./file.ts",
-			"src\\file.ts",
-			"src/**file.ts",
-			"src/[abc.ts",
-			"src/[a--z].ts",
-			"src/{ts}.file",
-			"src/{[ts,tsx}.file",
-			"src//file.ts",
-		];
-
-		for (const glob of invalidGlobs) {
-			assert.throws(
-				() => loadConfiguration(createConfigurationWithGlob(glob)),
-				/repository-relative glob/,
-				glob,
-			);
-		}
 	});
 
 	it("rejects invalid branch names", () => {
@@ -158,13 +200,14 @@ rules:
 			assert.throws(
 				() =>
 					loadConfiguration(`
-version: 1
-extends:
+version: 2
+sources:
   - git:
-      repository: https://github.com/acme/rules.git
-      revision:
-        branch: ${JSON.stringify(branch)}
-      path: rules.yml
+      repository: https://github.com/acme/knowledge
+      ref: ${JSON.stringify(branch)}
+    rules:
+      - folder: decisions
+        level: MUST
 `),
 				ConfigurationLoadError,
 				branch,
@@ -174,22 +217,23 @@ extends:
 
 	it("rejects invalid repository URLs", () => {
 		const invalidRepositories = [
-			"http://github.com/acme/rules.git",
-			"HTTPS://github.com/acme/rules.git",
-			"https://user:password@github.com/acme/rules.git",
+			"http://github.com/acme/knowledge.git",
+			"HTTPS://github.com/acme/knowledge.git",
+			"https://user:password@github.com/acme/knowledge.git",
+			"github.com/acme/knowledge",
 		];
 
 		for (const repository of invalidRepositories) {
 			assert.throws(
 				() =>
 					loadConfiguration(`
-version: 1
-extends:
+version: 2
+sources:
   - git:
-      repository: ${repository}
-      revision:
-        tag: v1
-      path: rules.yml
+      repository: ${JSON.stringify(repository)}
+    rules:
+      - folder: decisions
+        level: MUST
 `),
 				ConfigurationLoadError,
 				repository,

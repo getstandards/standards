@@ -1,6 +1,3 @@
-import type { MutableRevision } from "../lockfile/lockfile-schema.js";
-import { mutableRevisionParts } from "../lockfile/lockfile-schema.js";
-
 /** The number of leading commit characters shown in progress lines. */
 const SHORT_COMMIT_LENGTH = 12;
 
@@ -12,8 +9,8 @@ const SHORT_COMMIT_LENGTH = 12;
  * does not remove duplicates.
  */
 export interface ImportProgressReporter {
-	/** A `lock` run resolves a tag or branch to a commit. */
-	reportResolvingRevision(repository: string, revision: MutableRevision): void;
+	/** A run resolves a branch to its current commit. */
+	reportResolvingRevision(repository: string, ref: string): void;
 	/** An import reads a source from the persistent cache. */
 	reportCacheHit(repository: string, commit: string): void;
 	/** An import fetches a source over the network. */
@@ -36,9 +33,8 @@ export function createImportProgressReporter(
 	writeLine: (line: string) => void,
 ): ImportProgressReporter {
 	return {
-		reportResolvingRevision: (repository, revision) => {
-			const { type, name } = mutableRevisionParts(revision);
-			writeLine(`Resolving ${repository} at ${type} ${name}`);
+		reportResolvingRevision: (repository, ref) => {
+			writeLine(`Resolving ${repository} at branch ${ref}`);
 		},
 		reportCacheHit: (repository, commit) => {
 			writeLine(`Cache hit for ${repository} at ${formatShortCommit(commit)}`);

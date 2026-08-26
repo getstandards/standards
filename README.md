@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Write your engineering rules in YAML. An agent enforces them on every pull request.</strong><br>
+  <strong>Write your engineering rules as knowledge documents. An agent enforces them on every pull request.</strong><br>
   Standards catches the judgement calls that no linter can express, and backs every finding with evidence and line numbers.
 </p>
 
@@ -18,35 +18,37 @@
 
 <!-- Add a screenshot of the pull request comment here. It is the best demo of what Standards does. -->
 
-## Rules are code
+## Rules are knowledge documents
 
-Write down the rules your team already applies in code review. Each rule has an RFC 2119 level, a rationale, and the globs it applies to. Rules live in `.standards.yml` and change through pull requests, like code.
+A rule is a knowledge document: a markdown file with YAML frontmatter, in the Open Knowledge Format (OKF). Rules live in knowledge folders and change through pull requests, like code. `.standards.yml` maps each folder to a requirement level: `MUST` blocks the merge, `SHOULD` warns.
 
 ```yaml
-version: 1
-name: engineering-standards
-
-rules:
-  - id: money.no-floating-point
-    level: MUST NOT
-    description: Monetary values must not use floating-point types.
-    rationale: Floating-point rounding can produce incorrect amounts.
-    applies_to:
-      include:
-        - src/**/*.{ts,tsx}
-    guidance: Use the Money value object, or an integer in the smallest currency unit.
-
-  - id: api.paginate-unbounded-collections
-    level: SHOULD
-    description: An endpoint that returns a collection that can grow without bound accepts pagination parameters.
-    rationale: Unbounded responses degrade as the data grows, until the endpoint times out.
-    applies_to:
-      include:
-        - src/api/**/*.ts
-    guidance: Accept limit and cursor parameters and cap the page size.
+version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+      - folder: practices
+        level: SHOULD
 ```
 
-No linter can check the second rule. An agent can.
+A document like `knowledge/practices/api/paginate-unbounded-collections.md`:
+
+```markdown
+---
+title: An endpoint that returns an unbounded collection accepts pagination parameters
+description: Unbounded responses degrade as the data grows.
+applies_to:
+  include:
+    - src/api/**/*.ts
+---
+
+Unbounded responses degrade as the data grows, until the endpoint times out.
+Accept limit and cursor parameters and cap the page size.
+```
+
+No linter can check that rule. An agent can.
 
 ## Findings come with evidence
 
@@ -56,7 +58,7 @@ A review of a change that adds an unpaginated endpoint and computes a refund wit
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/standards-review-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/standards-review-light.svg">
-    <img alt="Output of standards review: a non-compliant report with two findings, each with evidence, a reason, and guidance" width="880" src="assets/standards-review-light.svg">
+    <img alt="Output of standards review: a non-compliant report with two findings, each with evidence, a reason, and a suggestion" width="880" src="assets/standards-review-light.svg">
   </picture>
 </p>
 
@@ -70,7 +72,7 @@ Deterministic planning selects the files and the rules the model sees. A separat
 npm install --global @getstandards/standards
 ```
 
-**2. Add your rules.** Run `standards init`, then put the rules your team already agrees on in `.standards.yml`.
+**2. Add your rules.** Run `standards init`, write your rules as knowledge documents, and map their folders in `.standards.yml`.
 
 **3. Connect a model provider.** With Anthropic:
 
@@ -136,7 +138,7 @@ Engineering rules live in wikis, RFCs, and one reviewer's head. They surface aft
 
 - **Not a linter.** Linters match patterns. Standards rules describe when a technique applies and which trade-off to prefer. An agent applies them the way a reviewer does.
 - **Not a generic AI reviewer.** No borrowed opinions. The agent enforces *your* rules: written by your team, versioned in Git, scoped by globs, reported with evidence you can audit.
-- **Shareable.** `extends` pulls rule packs from other repositories, and a lock file pins every revision, so reviews are reproducible.
+- **Shareable.** A source pulls a knowledge bundle from another repository and follows its branch, so every review judges the change against the most recent accepted knowledge. The report records the resolved commit of each source.
 - **Token-frugal.** Deterministic planning selects what the model sees; the agent only does the work that needs judgement.
 - **Your provider, your model.** You choose the provider and the model for each step of the review.
 
@@ -144,7 +146,7 @@ Engineering rules live in wikis, RFCs, and one reviewer's head. They surface aft
 
 The full specification lives in [`specs/`](specs/):
 
-- [Configuration](specs/configuration.md): rules, `extends`, and the lock file
+- [Configuration](specs/configuration.md): knowledge sources, folder mappings, and the document format
 - [Review pipeline](specs/review.md): how a review runs, and how it keeps token use low
 - [CLI](specs/cli.md): `init`, `validate`, `review`, and the other commands
 - [GitHub Action](specs/github.md): check runs, pull request comments, and permissions

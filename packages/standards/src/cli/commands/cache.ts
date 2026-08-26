@@ -6,8 +6,8 @@ import {
 	openGitSourceCache,
 } from "../../cache/git-source-cache.js";
 import type { ImportProgressReporter } from "../../cache/import-progress.js";
-import { loadRules } from "../../config/configuration-resolver.js";
 import { commitObjectIdSchema } from "../../config/configuration-schema.js";
+import { loadRules } from "../../rules/rules-loader.js";
 import { errorMessage, isMissingFileError } from "../../utils/errors.js";
 import type { CacheSubcommand } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";

@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadRules } from "../config/configuration-resolver.js";
+import { loadRules } from "../rules/rules-loader.js";
 import { openGitSourceCache } from "./git-source-cache.js";
 import type { ImportProgressReporter } from "./import-progress.js";
 
@@ -61,8 +61,8 @@ function configureGitUrlRewrite(
 	});
 }
 
-/** Create a committed Git repository that holds one rule file. */
-async function createGitRulesRepository(): Promise<{
+/** Create a committed Git repository that holds one knowledge bundle. */
+async function createGitKnowledgeRepository(): Promise<{
 	repositoryRoot: string;
 	commit: string;
 }> {
@@ -70,39 +70,37 @@ async function createGitRulesRepository(): Promise<{
 	runGit(repositoryRoot, ["init", "--initial-branch=main"]);
 	runGit(repositoryRoot, ["config", "user.name", "Standards Test"]);
 	runGit(repositoryRoot, ["config", "user.email", "standards@example.com"]);
+	await mkdir(path.join(repositoryRoot, "decisions"), { recursive: true });
 	await writeFile(
-		path.join(repositoryRoot, "rules.yml"),
-		`version: 1
-rules:
-  - id: git.rule
-    level: MUST
-    description: Git rule.
-    rationale: Test rule.
+		path.join(repositoryRoot, "decisions", "git-rule.md"),
+		`---
+title: Git rule
+---
+
+Test rule.
 `,
 	);
 	runGit(repositoryRoot, ["add", "."]);
-	runGit(repositoryRoot, ["commit", "--quiet", "--message", "Add rules"]);
+	runGit(repositoryRoot, ["commit", "--quiet", "--message", "Add knowledge"]);
 	return {
 		repositoryRoot,
 		commit: runGit(repositoryRoot, ["rev-parse", "HEAD"]),
 	};
 }
 
-/** Create a consumer repository pinned to one Git source commit. */
-async function createConsumerRepository(
-	repository: string,
-	commit: string,
-): Promise<string> {
+/** Create a consumer repository that follows one Git source branch. */
+async function createConsumerRepository(repository: string): Promise<string> {
 	const repositoryRoot = await createTemporaryDirectory();
 	await writeFile(
 		path.join(repositoryRoot, ".standards.yml"),
-		`version: 1
-extends:
+		`version: 2
+sources:
   - git:
       repository: ${repository}
-      revision:
-        commit: ${commit}
-      path: rules.yml
+      ref: main
+    rules:
+      - folder: decisions
+        level: MUST
 `,
 	);
 	return repositoryRoot;
@@ -197,13 +195,10 @@ describe("openGitSourceCache", () => {
 	});
 
 	it("stores a verified checkout without a .git directory and reuses it", async () => {
-		const gitSource = await createGitRulesRepository();
-		const repository = "https://example.test/rules.git";
+		const gitSource = await createGitKnowledgeRepository();
+		const repository = "https://example.test/knowledge.git";
 		configureGitUrlRewrite(repository, gitSource.repositoryRoot);
-		const consumerRoot = await createConsumerRepository(
-			repository,
-			gitSource.commit,
-		);
+		const consumerRoot = await createConsumerRepository(repository);
 		const cacheDirectory = await createTemporaryDirectory();
 		const entryDirectory = path.join(
 			cacheDirectory,
@@ -213,29 +208,32 @@ describe("openGitSourceCache", () => {
 
 		const firstRun = collectImportedCommits();
 		const firstStore = await openGitSourceCache(cacheDirectory);
-		const firstRules = await loadRules(consumerRoot, {
+		const firstResult = await loadRules(consumerRoot, {
 			gitSourceStore: firstStore,
 			reportProgress: firstRun.reporter,
 		});
 		await firstStore.dispose();
 
-		expect(firstRules.map(({ id }) => id)).toEqual(["git.rule"]);
+		expect(firstResult.rules.map(({ id }) => id)).toEqual(["git-rule"]);
 		expect(firstRun.fetches).toEqual([gitSource.commit]);
 		expect(firstRun.cacheHits).toEqual([]);
-		expect(await pathExists(path.join(entryDirectory, "rules.yml"))).toBe(true);
+		expect(
+			await pathExists(path.join(entryDirectory, "decisions", "git-rule.md")),
+		).toBe(true);
 		expect(await pathExists(path.join(entryDirectory, ".git"))).toBe(false);
-
-		await rm(gitSource.repositoryRoot, { recursive: true, force: true });
 
 		const secondRun = collectImportedCommits();
 		const secondStore = await openGitSourceCache(cacheDirectory);
-		const secondRules = await loadRules(consumerRoot, {
+		const secondResult = await loadRules(consumerRoot, {
 			gitSourceStore: secondStore,
 			reportProgress: secondRun.reporter,
 		});
 		await secondStore.dispose();
 
-		expect(secondRules.map(({ id }) => id)).toEqual(["git.rule"]);
+		expect(secondResult.rules.map(({ id }) => id)).toEqual(["git-rule"]);
+		expect(secondResult.gitSources).toEqual([
+			{ repository, ref: "main", commit: gitSource.commit },
+		]);
 		expect(secondRun.cacheHits).toEqual([gitSource.commit]);
 		expect(secondRun.fetches).toEqual([]);
 	});

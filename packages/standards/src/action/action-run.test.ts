@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai";
@@ -25,7 +25,7 @@ afterEach(async () => {
 	);
 });
 
-/** A repository whose feature branch adds one MUST NOT violation. */
+/** A repository whose feature branch adds one MUST violation. */
 async function createReviewRepository(): Promise<{
 	workspace: string;
 	baseSha: string;
@@ -40,16 +40,30 @@ async function createReviewRepository(): Promise<{
 	await runGit(["config", "user.name", "Test"], workspace);
 	await writeFile(
 		path.join(workspace, ".standards.yml"),
-		`version: 1
-rules:
-  - id: money.no-float
-    level: MUST NOT
-    description: Money must not be a floating-point number.
-    rationale: Floating-point money loses cents.
-    guidance: Use an integer of cents.
-    applies_to:
-      include:
-        - "**/*.ts"
+		`version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+`,
+	);
+	// The document at decisions/money/no-float.md derives the id money.no-float.
+	await mkdir(path.join(workspace, "knowledge", "decisions", "money"), {
+		recursive: true,
+	});
+	await writeFile(
+		path.join(workspace, "knowledge", "decisions", "money", "no-float.md"),
+		`---
+title: Money must not be a floating-point number.
+description: Floating-point money loses cents.
+status: stable
+applies_to:
+  include:
+    - "**/*.ts"
+---
+
+Use an integer of cents.
 `,
 	);
 	await runGit(["add", "-A"], workspace);
@@ -226,7 +240,7 @@ describe("runAction", () => {
 			"🛑 **The total is a floating-point number.**",
 		);
 		expect(review.comments[0].body).toContain(
-			"<sub>MUST NOT · `money.no-float` · Standards review</sub>",
+			"<sub>MUST · `money.no-float` · Standards review</sub>",
 		);
 		const comment = await requestBody(requests, 5);
 		expect(comment.body.startsWith(REPORT_COMMENT_MARKER)).toBe(true);

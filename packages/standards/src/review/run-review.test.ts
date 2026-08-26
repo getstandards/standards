@@ -9,7 +9,7 @@ import {
 	fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import { runGit } from "../utils/git.js";
 import { runReview } from "./run-review.js";
 import type { ReviewStepProgress } from "./step-progress.js";
@@ -44,10 +44,13 @@ function anthropicFaux() {
 
 const moneyRule: Rule = {
 	id: "money.no-float",
-	level: "MUST NOT",
-	description: "Money must not be a floating-point number.",
-	rationale: "Floating-point money loses cents.",
+	level: "MUST",
+	title: "Money must not be a floating-point number.",
+	description: "",
+	body: "Floating-point money loses cents.",
 	applies_to: { include: ["**/*.ts"] },
+	tags: [],
+	aliases: [],
 };
 
 afterEach(async () => {
@@ -59,7 +62,7 @@ afterEach(async () => {
 });
 
 describe("runReview", () => {
-	it("reports a non-compliant conclusion for a confirmed MUST NOT finding", async () => {
+	it("reports a non-compliant conclusion for a confirmed MUST finding", async () => {
 		const directory = await initRepository();
 		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
 		const base = await commitAll(directory, "base");
@@ -100,11 +103,23 @@ describe("runReview", () => {
 		};
 		faux.setResponses([respond, respond]);
 
+		const gitSources = [
+			{
+				repository: "https://example.com/standards.git",
+				ref: "main",
+				commit: "0123456789012345678901234567890123456789",
+			},
+		];
+		const warnings = [
+			{ document: "standards/broken.md", problem: "missing level" },
+		];
 		const report = await runReview({
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
 			ruleSet: [moneyRule],
+			gitSources,
+			warnings,
 			models,
 			environment: {},
 		});
@@ -116,6 +131,8 @@ describe("runReview", () => {
 			evaluation_tasks: 1,
 		});
 		expect(report.findings).toHaveLength(1);
+		expect(report.sources).toEqual(gitSources);
+		expect(report.warnings).toEqual(warnings);
 		expect(report.usage.evaluation.invocations).toBe(1);
 		expect(report.usage.verification.invocations).toBe(1);
 		expect(report.models.evaluation).toBe("anthropic/claude-sonnet-5");
@@ -148,6 +165,8 @@ describe("runReview", () => {
 										evidence: "const total: number = subtotal * 1.2",
 										reason:
 											"The invoice total is computed and stored as a floating-point number.",
+										suggestion:
+											"Compute the total in minor units with the Money value object.",
 										suggested_change:
 											"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 									},
@@ -175,8 +194,11 @@ describe("runReview", () => {
 			environment: {},
 		});
 
-		expect(report.version).toBe(2);
+		expect(report.version).toBe(3);
 		expect(report.findings).toHaveLength(1);
+		expect(report.findings[0]?.suggestion).toBe(
+			"Compute the total in minor units with the Money value object.",
+		);
 		expect(report.findings[0]?.suggested_change).toBe(
 			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 		);

@@ -17,20 +17,12 @@ const COMMANDS: CommandHelp[] = [
 		description: "Validate the configuration and resolve its rules",
 	},
 	{
-		name: "lock",
-		description: "Resolve mutable Git sources and update the lock file",
-	},
-	{
 		name: "review",
 		description: "Review changes against the resolved rules",
 	},
 	{
 		name: "cache",
 		description: "Manage the source cache (clean, prune)",
-	},
-	{
-		name: "schema [config|lock]",
-		description: "Print a JSON Schema for the configuration or lock file",
 	},
 	{
 		name: "auth",

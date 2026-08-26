@@ -5,9 +5,9 @@ Defines the command-line interface for Standards.
 ## Purpose
 
 The Standards CLI lets users create a Standards configuration, validate,
-resolve, list, and test its rules, update its lock file, manage model provider
-credentials, list the usable model references, and review changes from a
-terminal or automation environment.
+resolve, list, and test its rules, manage model provider credentials, list
+the usable model references, and review changes from a terminal or automation
+environment.
 
 The CLI implementation MUST be defined in `src/cli`.
 
@@ -19,12 +19,10 @@ The executable name is `standards`. It provides these commands:
 | --- | --- | --- |
 | `standards init` | Create an initial Standards configuration. | Implemented. |
 | `standards validate` | Validate the configuration and resolve its complete rule set. | Implemented. |
-| `standards lock` | Resolve mutable Git sources and update the lock file. | Implemented. `--check` is planned. |
 | `standards rules` | List the resolved rule set with each rule's origin. | Planned. |
 | `standards review` | Review changes against the resolved rule set. | Implemented. The pipeline is specified in [Standards review](./review.md). |
 | `standards test` | Run rule tests against the resolved rule set. | Planned. Specified in [Standards rule tests](./testing.md). |
 | `standards cache` | Manage the source cache. Groups the `clean` and `prune` subcommands. | Planned. |
-| `standards schema [config\|lock]` | Print a bundled JSON Schema to standard output. | Implemented. |
 | `standards auth` | Manage model provider credentials. Groups the `login`, `logout`, and `status` subcommands. | Implemented. |
 | `standards models [provider]` | List the model references that the configured providers make usable. | Implemented. |
 
@@ -46,22 +44,22 @@ An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
 
 A command accepts only the positional arguments and options listed for it in
-this specification. No command other than `cache`, `schema`, `auth`, `models`,
-and `review` accepts a positional argument. Supplying an argument or option
-that a command does not accept MUST print a diagnostic to standard error and
-exit with the command's error status defined below.
+this specification. No command other than `cache`, `auth`, `models`, and
+`review` accepts a positional argument. Supplying an argument or option that
+a command does not accept MUST print a diagnostic to standard error and exit
+with the command's error status defined below.
 
 ### Exit statuses
 
-`review`, `test`, `lock --check`, and `auth status` are checking commands:
-their result can be negative even though the command ran completely.
-Automation must separate a negative result from a broken run, so a checking
-command MUST use three statuses:
+`review`, `test`, and `auth status` are checking commands: their result can
+be negative even though the command ran completely. Automation must separate
+a negative result from a broken run, so a checking command MUST use three
+statuses:
 
 | Status | Meaning |
 | --- | --- |
-| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, an up-to-date lock file, at least one usable credential. |
-| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, a stale lock entry, no usable credential. |
+| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, at least one usable credential. |
+| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, no usable credential. |
 | `2` | The command could not run or complete: invalid arguments, invalid configuration, a missing credential, or a provider failure. |
 
 Every other command exits with status `0` on success and status `1` on any
@@ -77,8 +75,8 @@ These options control the source cache defined in
 
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
-| `--cache-dir <path>` | Use `<path>` as the cache directory instead of the default. | `validate`, `lock`, `rules`, `review`, `test`, `cache clean`, `cache prune` |
-| `--no-cache` | Do not read from or write to the persistent cache for this invocation. | `validate`, `lock`, `rules`, `review`, `test` |
+| `--cache-dir <path>` | Use `<path>` as the cache directory instead of the default. | `validate`, `rules`, `review`, `test`, `cache clean`, `cache prune` |
+| `--no-cache` | Do not read from or write to the persistent cache for this invocation. | `validate`, `rules`, `review`, `test` |
 
 `--cache-dir` MUST take priority over the `STANDARDS_CACHE_DIR` environment
 variable and over the `cache_dir` field of the settings file defined in
@@ -125,21 +123,15 @@ summary that a command writes to standard output.
 `standards init` creates the entry file for a repository that has none.
 
 The command MUST create `.standards.yml` in the current working directory.
-The created file MUST be a valid version 1 configuration with an empty rule
-set, and SHOULD contain commented examples for `extends` and one rule.
+The created file MUST be a valid version 2 configuration with an empty source
+list, and SHOULD contain commented examples for a local and a Git knowledge
+source.
 
-On an interactive terminal, the command MAY prompt the user and write one
-rule from those prompts. When it adds a rule, the file keeps the commented
-examples and adds the rule to the `rules` list. Without an interactive
-terminal, the command MUST write the default file without prompting.
-
-On success, the command MUST report the created path — and the rule's `id`
-when the user added one — and exit with status `0`.
+On success, the command MUST report the created path and exit with status
+`0`.
 
 When `.standards.yml` already exists, the command MUST print a diagnostic and
-exit with status `1`. It MUST NOT modify the existing file. The command MUST
-NOT create a lock file; `standards lock` creates one when the configuration
-needs it.
+exit with status `1`. It MUST NOT modify the existing file.
 
 ## `validate`
 
@@ -148,8 +140,9 @@ directory and resolve its complete configuration graph as defined in
 [Standards configuration format](./configuration.md).
 
 On success, the command MUST print the canonical repository path, entry-file
-name, lock-file state, number of resolved rules, and rule counts grouped by
-requirement level. It MUST exit with status `0`.
+name, number of resolved rules, and rule counts grouped by requirement level.
+It MUST print the resolved commit of each Git source and the warnings for
+skipped knowledge documents. It MUST exit with status `0`.
 
 If configuration loading, validation, or resolution fails, the command MUST
 print an invalid-configuration heading and the diagnostic to standard error.
@@ -159,62 +152,12 @@ The diagnostic MUST include:
 
 - The failure category.
 - The canonical repository path when it can be resolved.
-- The configuration or lock-file source when known.
+- The configuration source when known.
 - The YAML field path when known.
 - The original problem without duplicated source and field prefixes.
 - A relevant next action.
 
-The command MUST NOT modify the configuration, the lock file, or any other
-repository file.
-
-## `lock`
-
-`standards lock` MUST load `.standards.yml` from the current working directory
-and traverse its complete configuration graph. It MUST resolve each tag through
-its exact `refs/tags/` reference and each branch through its exact `refs/heads/`
-reference. It MUST NOT fall back to another reference type with the same name.
-
-For an annotated tag, the command MUST record the commit to which the tag
-ultimately points. A configuration source pinned directly to a commit MUST NOT
-produce a lock entry, but mutable sources discovered through that configuration
-MUST produce entries in the root lock file.
-
-The command MUST write `.standards.lock` at the canonical repository root.
-It MUST include exactly one entry for each distinct mutable source. Entries MUST
-be sorted by repository, revision type, and revision value. A configuration
-without mutable sources MUST produce a valid lock file with an empty `sources`
-array.
-
-The command MUST replace the lock file through a temporary sibling file. It
-MUST NOT rewrite the lock file when its generated content is unchanged.
-
-On success, the command MUST report whether the lock file changed, the
-repository and lock-file paths, and counts for all mutable sources, branches,
-and tags. It MUST exit with status `0`.
-
-If configuration traversal, Git resolution, or file writing fails, the command
-MUST print the problem and a relevant next action to standard error. It MUST
-exit with status `1` and MUST NOT replace the existing lock file with partial
-content.
-
-### `lock --check`
-
-`standards lock --check` answers one question for automation: is the lock
-file still what `standards lock` would write today? The command MUST perform
-the same traversal and reference resolution as `lock`, but MUST NOT write or
-modify any file.
-
-- When every resolved commit matches its lock entry, and no entry is missing
-  or unused, the command MUST report the up-to-date state and exit with
-  status `0`.
-- Otherwise the command MUST report each difference — the repository, the
-  revision, the locked commit, and the newly resolved commit, or the missing
-  or unused entry — and exit with status `1`.
-- When traversal or resolution fails, the command MUST print the problem and
-  exit with status `2`.
-
-A stale result is information, not an update. A user adopts the change by
-running `standards lock` and committing the diff.
+The command MUST NOT modify the configuration or any other repository file.
 
 ## `rules`
 
@@ -226,15 +169,15 @@ resolve its complete configuration graph, exactly as `validate` does. It MUST
 print every resolved rule in resolution order with:
 
 - The rule `id` and `level`.
-- The rule's source: the repository-relative path for a local source, or the
-  repository, revision, resolved commit, and path for a Git source.
+- The rule's source: the document path for a local source, or the repository,
+  `ref`, resolved commit, and document path for a Git source.
 
 With `--format json`, the command MUST print the resolved rules as one JSON
 document, each rule with its complete fields and its source.
 
 The command exits with status `0` on success and status `1` when resolution
 fails, with the same diagnostics as `validate`. It MUST NOT modify the
-configuration, the lock file, or any other repository file.
+configuration or any other repository file.
 
 ## `review`
 
@@ -362,32 +305,17 @@ directory. It MUST report the removed location and exit with status `0`. If the
 cache directory does not exist, it MUST report that state and exit with status
 `0`.
 
-`standards cache prune` MUST load `.standards.yml` and, when present, its lock
-file from the current working directory, compute the commit object IDs that
-the resolved configuration graph references, and remove every source cache
-entry whose commit is not in that set. It MUST report the number of removed
-entries and exit with status `0`.
+`standards cache prune` MUST load `.standards.yml` from the current working
+directory, compute the commit object IDs that the resolved knowledge sources
+reference, and remove every source cache entry whose commit is not in that
+set. It MUST report the number of removed entries and exit with status `0`.
 
-A `cache` subcommand MUST NOT modify the configuration, the lock file, or any
-other repository file.
+A `cache` subcommand MUST NOT modify the configuration or any other
+repository file.
 
 If cache resolution, traversal, or removal fails, the command MUST print the
 problem and a relevant next action to standard error. It MUST exit with status
 `1`.
-
-## `schema`
-
-`standards schema` prints a bundled JSON Schema to standard output. It takes one
-optional positional argument that selects the target: `config` (default) prints
-the schema for `.standards.yml` and extended configuration files, and `lock`
-prints the schema for `.standards.lock`. The schemas are described in
-[Standards configuration format](./configuration.md).
-
-The command MUST write the selected schema to standard output and exit with
-status `0`. An unknown target MUST print a diagnostic to standard error and
-exit with status `1`. The command MUST NOT read the configuration, the lock
-file, the source cache, or the settings file, so it MUST NOT accept the
-`--cache-dir` or `--no-cache` option.
 
 ## `auth`
 
@@ -396,8 +324,8 @@ Running `standards auth` without a subcommand, or with `--help` or `-h`, MUST
 print the `auth` help text, which lists the `login`, `logout`, and `status`
 subcommands, to standard output and exit with status `0`.
 
-An `auth` subcommand MUST NOT modify the configuration, the lock file, or any
-other repository file.
+An `auth` subcommand MUST NOT modify the configuration or any other
+repository file.
 
 ### `auth login`
 
@@ -427,8 +355,8 @@ provider, it MUST report that state. Both cases exit with status `0`.
 ### `auth status`
 
 `standards auth status` reports the credential state of each model provider.
-The command is read only: it MUST NOT modify the configuration, the lock file,
-or any credential.
+The command is read only: it MUST NOT modify the configuration or any
+credential.
 
 For each provider with a usable credential, the command MUST print one line
 with the provider id, the credential state, and its source:

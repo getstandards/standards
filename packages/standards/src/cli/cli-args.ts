@@ -1,16 +1,13 @@
 import { parseArgs } from "node:util";
 import { z } from "zod/v4";
-import { schemaTargets } from "../schema/schema-files.js";
 import { errorMessage } from "../utils/errors.js";
 import { renderCommandHelp } from "./cli-help.js";
 
 export const cliCommandSchema = z.enum([
 	"init",
 	"validate",
-	"lock",
 	"review",
 	"cache",
-	"schema",
 	"auth",
 	"models",
 ]);
@@ -25,10 +22,6 @@ export const authSubcommandSchema = z.enum(["login", "logout", "status"]);
 
 export type AuthSubcommand = z.infer<typeof authSubcommandSchema>;
 
-export const schemaTargetSchema = z.enum(schemaTargets);
-
-export type SchemaTarget = z.infer<typeof schemaTargetSchema>;
-
 export const reviewFormatSchema = z.enum(["text", "json"]);
 
 export type ReviewFormat = z.infer<typeof reviewFormatSchema>;
@@ -37,7 +30,7 @@ export type ReviewFormat = z.infer<typeof reviewFormatSchema>;
 const REVIEW_ERROR_STATUS = 2;
 
 /** Commands that read from or write to the persistent source cache. */
-const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "lock", "review"];
+const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "review"];
 
 /** The `auth` subcommands that take one optional model provider argument. */
 const PROVIDER_AUTH_SUBCOMMANDS: AuthSubcommand[] = ["login", "logout"];
@@ -68,7 +61,6 @@ export interface ParsedCliArgs {
 	command?: CliCommand;
 	cacheSubcommand?: CacheSubcommand;
 	authSubcommand?: AuthSubcommand;
-	schemaTarget?: SchemaTarget;
 	provider?: string;
 	review?: ReviewCliArgs;
 	models?: ModelsCliArgs;
@@ -197,10 +189,6 @@ export function parseCliArgs(
 
 	if (parsedCommand === "cache") {
 		return parseCacheCommand(commandArguments, cacheDir, noCache);
-	}
-
-	if (parsedCommand === "schema") {
-		return parseSchemaCommand(commandArguments, cacheDir, noCache);
 	}
 
 	if (parsedCommand === "auth") {
@@ -385,52 +373,6 @@ function parseModelsCommand(
 	return {
 		command: "models",
 		models: { provider, all },
-		noCache: false,
-		help: false,
-	};
-}
-
-/** Parse the arguments and options of the `schema` command. */
-function parseSchemaCommand(
-	commandArguments: string[],
-	cacheDir: string | undefined,
-	noCache: boolean,
-): ParsedCliArgs {
-	if (cacheDir !== undefined) {
-		throw new CliArgumentError(
-			"Command 'schema' does not accept the '--cache-dir' option.",
-		);
-	}
-	if (noCache) {
-		throw new CliArgumentError(
-			"Command 'schema' does not accept the '--no-cache' option.",
-		);
-	}
-
-	const [target, ...rest] = commandArguments;
-	if (rest.length > 0) {
-		throw new CliArgumentError(
-			"Command 'schema' accepts at most one target argument.",
-		);
-	}
-
-	if (target === undefined) {
-		return {
-			command: "schema",
-			schemaTarget: "config",
-			noCache: false,
-			help: false,
-		};
-	}
-
-	const targetResult = schemaTargetSchema.safeParse(target);
-	if (!targetResult.success) {
-		throw new CliArgumentError(`Unknown schema target '${target}'.`);
-	}
-
-	return {
-		command: "schema",
-		schemaTarget: targetResult.data,
 		noCache: false,
 		help: false,
 	};

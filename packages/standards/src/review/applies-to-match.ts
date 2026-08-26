@@ -1,5 +1,5 @@
 import picomatch from "picomatch";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 
 /**
  * Match repository paths with `/` separators and dot files included.

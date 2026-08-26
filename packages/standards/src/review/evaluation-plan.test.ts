@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import type { ChangedFile } from "./change-diff.js";
 import { planEvaluationTasks } from "./evaluation-plan.js";
 import type { FileSelection } from "./rule-selection.js";
@@ -14,8 +14,11 @@ function selection(path: string, ruleIds: string[]): FileSelection {
 	const rules: Rule[] = ruleIds.map((id) => ({
 		id,
 		level: "MUST",
-		description: "description",
-		rationale: "rationale",
+		title: "rule statement",
+		description: "",
+		body: "rationale",
+		tags: [],
+		aliases: [],
 	}));
 	return { file, rules };
 }

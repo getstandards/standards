@@ -1,24 +1,12 @@
-import { access, realpath } from "node:fs/promises";
-import path from "node:path";
+import { realpath } from "node:fs/promises";
 import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
 import { createImportProgressReporter } from "../../cache/import-progress.js";
-import { loadRules } from "../../config/configuration-resolver.js";
 import { requirementLevels } from "../../config/configuration-schema.js";
+import { loadRules } from "../../rules/rules-loader.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
 const ENTRY_FILE_NAME = ".standards.yml";
-const LOCK_FILE_NAME = ".standards.lock";
-
-/** Return whether a path is accessible. */
-async function pathExists(candidatePath: string): Promise<boolean> {
-	try {
-		await access(candidatePath);
-		return true;
-	} catch {
-		return false;
-	}
-}
 
 /** Validate and resolve the Standards configuration in the working directory. */
 export async function runValidateCommand({
@@ -40,14 +28,11 @@ export async function runValidateCommand({
 		output.error(line),
 	);
 	try {
-		const rules = await loadRules(workingDirectory, {
+		const { rules, gitSources, warnings } = await loadRules(workingDirectory, {
 			gitSourceStore,
 			reportProgress,
 		});
 		const repositoryRoot = await realpath(workingDirectory);
-		const hasLockfile = await pathExists(
-			path.join(repositoryRoot, LOCK_FILE_NAME),
-		);
 		const levelSummary = requirementLevels
 			.map((level) => ({
 				level,
@@ -57,13 +42,26 @@ export async function runValidateCommand({
 			.map(({ level, count }) => `${level}: ${count}`)
 			.join(", ");
 
-		output.log(`Standards configuration is valid.
-
-  Repository:     ${repositoryRoot}
-  Entry file:     ${ENTRY_FILE_NAME}
-  Lock file:      ${hasLockfile ? `${LOCK_FILE_NAME} (present)` : "not present"}
-  Resolved rules: ${rules.length}
-  Levels:         ${levelSummary || "none"}`);
+		const lines = [
+			"Standards configuration is valid.",
+			"",
+			`  Repository:     ${repositoryRoot}`,
+			`  Entry file:     ${ENTRY_FILE_NAME}`,
+			`  Resolved rules: ${rules.length}`,
+			`  Levels:         ${levelSummary || "none"}`,
+		];
+		for (const source of gitSources) {
+			lines.push(
+				`  Git source:     ${source.repository} at ${source.ref}: ${source.commit}`,
+			);
+		}
+		if (warnings.length > 0) {
+			lines.push("", "Warnings:");
+			for (const warning of warnings) {
+				lines.push(`  ${warning.document}: ${warning.problem}`);
+			}
+		}
+		output.log(lines.join("\n"));
 		return 0;
 	} catch (error) {
 		output.error(await formatValidationError(error, workingDirectory));

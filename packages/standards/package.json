@@ -12,15 +12,12 @@
 	},
 	"exports": {
 		".": "./dist/cli/index.js",
-		"./schemas/v1/standards.schema.json": "./schemas/v1/standards.schema.json",
-		"./schemas/v1/standards-lock.schema.json": "./schemas/v1/standards-lock.schema.json",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
 		"build": "pnpm run build:action",
 		"build:action": "tsc --project tsconfig.build.json && node scripts/build-action.mjs",
 		"check": "biome check src package.json tsconfig.json tsconfig.build.json && tsc --noEmit",
-		"generate:schemas": "tsx scripts/generate-schemas.ts",
 		"test": "vitest run"
 	},
 	"keywords": [
@@ -55,9 +52,7 @@
 		"@biomejs/biome": "^2.5.8",
 		"@types/node": "^26.2.0",
 		"@types/picomatch": "^4.0.3",
-		"ajv": "^8.20.0",
 		"esbuild": "^0.28.2",
-		"tsx": "^4.20.0",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"
 	},
@@ -74,7 +69,6 @@
 		"pnpm": "^11.0.0"
 	},
 	"files": [
-		"dist",
-		"schemas"
+		"dist"
 	]
 }

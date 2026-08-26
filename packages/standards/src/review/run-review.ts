@@ -1,5 +1,6 @@
 import type { Api, Model, ModelCost, Models } from "@earendil-works/pi-ai";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
+import type { ResolvedGitSource, RuleWarning } from "../rules/rules-loader.js";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { emptyStepUsage } from "./agent-usage.js";
 import { computeChange } from "./change-diff.js";
@@ -37,6 +38,10 @@ export interface RunReviewInput {
 	targets?: readonly string[];
 	/** The ordered rule set produced by resolution. */
 	ruleSet: readonly Rule[];
+	/** The resolved commit of each Git knowledge source, for the report. */
+	gitSources?: readonly ResolvedGitSource[];
+	/** The knowledge documents the loader skipped, for the report. */
+	warnings?: readonly RuleWarning[];
 	/** The SDK model collection that runs the agent steps. */
 	models: Models;
 	/** Model references from the `standards review` options, when given. */
@@ -135,6 +140,8 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			costBasis,
 			confirmedFindings: [],
 			ruleSet: input.ruleSet,
+			sources: input.gitSources,
+			warnings: input.warnings,
 		});
 	}
 
@@ -189,6 +196,8 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		costBasis,
 		confirmedFindings: verification.findings,
 		ruleSet: input.ruleSet,
+		sources: input.gitSources,
+		warnings: input.warnings,
 	});
 }
 

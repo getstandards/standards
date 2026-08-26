@@ -5,15 +5,13 @@ const COMMIT_OBJECT_ID_PATTERN = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
 export const RULE_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 const FORBIDDEN_GIT_REFERENCE_CHARACTERS = "~^:?*[\\";
+const SCP_REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$/;
 
-/** The levels defined by RFC 2119 and supported by configuration version 1. */
-export const requirementLevels = [
-	"MUST",
-	"MUST NOT",
-	"SHOULD",
-	"SHOULD NOT",
-	"MAY",
-] as const;
+/** The requirement levels a folder mapping accepts (specs/configuration.md). */
+export const requirementLevels = ["MUST", "SHOULD"] as const;
+
+/** The requirement level of a rule: blocking or advisory. */
+export type RequirementLevel = (typeof requirementLevels)[number];
 
 /** A full SHA-1 or SHA-256 Git commit object ID. */
 export const commitObjectIdSchema = z
@@ -23,22 +21,56 @@ export const commitObjectIdSchema = z
 		"Expected a full 40-character or 64-character Git commit object ID.",
 	);
 
-/** An HTTPS Git repository URL without embedded credentials. */
-export const repositoryUrlSchema = z
-	.url()
-	.superRefine((repository, context) => {
-		const parsedRepository = new URL(repository);
-		if (!repository.startsWith("https://")) {
-			context.addIssue({
-				code: "custom",
-				message: "Expected an HTTPS repository URL.",
-			});
-		}
+/** Return true when a value is an HTTPS repository URL without credentials. */
+function isValidHttpsRepositoryUrl(repository: string): boolean {
+	let parsedRepository: URL;
+	try {
+		parsedRepository = new URL(repository);
+	} catch {
+		return false;
+	}
+	return (
+		repository.startsWith("https://") &&
+		parsedRepository.username === "" &&
+		parsedRepository.password === ""
+	);
+}
 
-		if (parsedRepository.username !== "" || parsedRepository.password !== "") {
+/** Return true when a value is an `ssh://` or scp-form repository URL. */
+function isValidSshRepositoryUrl(repository: string): boolean {
+	if (repository.startsWith("ssh://")) {
+		try {
+			new URL(repository);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+	return SCP_REPOSITORY_PATTERN.test(repository);
+}
+
+/**
+ * An HTTPS repository URL without embedded credentials, or an SSH repository
+ * URL in `ssh://` or scp form (specs/configuration.md).
+ */
+export const repositoryUrlSchema = z
+	.string()
+	.superRefine((repository, context) => {
+		if (repository.startsWith("https://")) {
+			if (!isValidHttpsRepositoryUrl(repository)) {
+				context.addIssue({
+					code: "custom",
+					message:
+						"Expected an HTTPS repository URL without embedded credentials.",
+				});
+			}
+			return;
+		}
+		if (!isValidSshRepositoryUrl(repository)) {
 			context.addIssue({
 				code: "custom",
-				message: "Repository URLs must not contain credentials.",
+				message:
+					"Expected an HTTPS repository URL, or an SSH repository URL in ssh:// or scp form.",
 			});
 		}
 	});
@@ -83,65 +115,16 @@ function isValidGitReferenceName(referenceName: string): boolean {
 		.every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
 }
 
-const commitRevisionSchema = z
-	.object({ commit: commitObjectIdSchema })
-	.strict();
-
-/** A Git tag revision without the `refs/tags/` prefix. */
-export const tagRevisionSchema = z
-	.object({
-		tag: z
-			.string()
-			.refine(
-				(tag) => !tag.startsWith("refs/tags/") && isValidGitReferenceName(tag),
-				"Expected a valid tag name without the refs/tags/ prefix.",
-			),
-	})
-	.strict();
-
-/** A Git branch revision without the `refs/heads/` prefix. */
-export const branchRevisionSchema = z
-	.object({
-		branch: z
-			.string()
-			.refine(
-				(branch) =>
-					!branch.startsWith("-") &&
-					!branch.startsWith("refs/heads/") &&
-					isValidGitReferenceName(branch),
-				"Expected a valid branch name without the refs/heads/ prefix.",
-			),
-	})
-	.strict();
-
-/** A commit, tag, or branch selected by a Git extension source. */
-export const gitRevisionSchema = z.union([
-	commitRevisionSchema,
-	tagRevisionSchema,
-	branchRevisionSchema,
-]);
-
-const localExtensionSourceSchema = z
-	.object({ path: relativePathSchema })
-	.strict();
-
-const gitExtensionSourceSchema = z
-	.object({
-		git: z
-			.object({
-				repository: repositoryUrlSchema,
-				revision: gitRevisionSchema,
-				path: relativePathSchema,
-			})
-			.strict(),
-	})
-	.strict();
-
-/** A local or Git configuration source in an `extends` list. */
-export const extensionSourceSchema = z.union([
-	localExtensionSourceSchema,
-	gitExtensionSourceSchema,
-]);
+/** A Git branch name without the `refs/heads/` prefix. */
+export const branchNameSchema = z
+	.string()
+	.refine(
+		(branch) =>
+			!branch.startsWith("-") &&
+			!branch.startsWith("refs/heads/") &&
+			isValidGitReferenceName(branch),
+		"Expected a valid branch name without the refs/heads/ prefix.",
+	);
 
 /** Return true when a character can be an endpoint in a version 1 range. */
 function isValidCharacterClassEndpoint(character: string): boolean {
@@ -260,62 +243,115 @@ const globSchema = z
 		"Expected a repository-relative glob that uses version 1 syntax.",
 	);
 
-const appliesToSchema = z
+/** The `include`/`exclude` glob filter that scopes a rule to files. */
+export const appliesToSchema = z
 	.object({
 		include: z.array(globSchema).min(1).optional(),
 		exclude: z.array(globSchema).min(1).optional(),
 	})
 	.strict();
 
-/** A rule that can be evaluated during pull request review. */
-export const ruleSchema = z
+/** A validated `applies_to` filter. */
+export type AppliesTo = z.infer<typeof appliesToSchema>;
+
+/** A bundle-relative folder path with `/` separators and no `.` segments. */
+const folderSchema = relativePathSchema.refine(
+	(folder) =>
+		!folder.includes("\\") &&
+		!folder.endsWith("/") &&
+		folder
+			.split("/")
+			.every(
+				(segment) => segment !== "" && segment !== "." && segment !== "..",
+			),
+	"Expected a bundle-relative folder path without '.' or '..' segments.",
+);
+
+/** One folder-to-level mapping of a knowledge source. */
+export const folderRuleSchema = z
 	.object({
-		id: z
-			.string()
-			.regex(RULE_ID_PATTERN, "Expected a stable lowercase rule identifier."),
+		folder: folderSchema,
 		level: z.enum(requirementLevels),
-		description: z.string(),
-		rationale: z.string(),
-		applies_to: appliesToSchema.optional(),
-		guidance: z.string().optional(),
-		references: z.array(z.string()).optional(),
 	})
 	.strict();
 
-/** The validated shape of a version 1 Standards configuration document. */
+const folderRulesSchema = z
+	.array(folderRuleSchema)
+	.min(1, "Expected at least one folder-to-level mapping.");
+
+const localSourceSchema = z
+	.object({
+		path: relativePathSchema,
+		rules: folderRulesSchema,
+	})
+	.strict();
+
+const gitSourceSchema = z
+	.object({
+		git: z
+			.object({
+				repository: repositoryUrlSchema,
+				ref: branchNameSchema.optional(),
+				path: relativePathSchema.optional(),
+			})
+			.strict(),
+		rules: folderRulesSchema,
+	})
+	.strict();
+
+/** A local or Git knowledge source in the configuration `sources` list. */
+export const knowledgeSourceSchema = z.union([
+	localSourceSchema,
+	gitSourceSchema,
+]);
+
+/** Return true when one mapped folder contains or equals another. */
+function foldersOverlap(first: string, second: string): boolean {
+	return (
+		first === second ||
+		first.startsWith(`${second}/`) ||
+		second.startsWith(`${first}/`)
+	);
+}
+
+/** The validated shape of a version 2 Standards configuration document. */
 export const configurationSchema = z
 	.object({
-		version: z.literal(1),
+		version: z.literal(2),
 		name: z.string().optional(),
 		description: z.string().optional(),
-		extends: z.array(extensionSourceSchema).default([]),
-		rules: z.array(ruleSchema).default([]),
+		sources: z.array(knowledgeSourceSchema).default([]),
 	})
 	.strict()
 	.superRefine((configuration, context) => {
-		const ruleIndexes = new Map<string, number>();
-		for (const [index, rule] of configuration.rules.entries()) {
-			const previousIndex = ruleIndexes.get(rule.id);
-			if (previousIndex !== undefined) {
-				context.addIssue({
-					code: "custom",
-					path: ["rules", index, "id"],
-					message: `Rule ID '${rule.id}' duplicates rules[${previousIndex}].id.`,
-				});
-				continue;
+		for (const [sourceIndex, source] of configuration.sources.entries()) {
+			for (const [index, entry] of source.rules.entries()) {
+				const overlapIndex = source.rules.findIndex(
+					(other, otherIndex) =>
+						otherIndex < index && foldersOverlap(other.folder, entry.folder),
+				);
+				if (overlapIndex !== -1) {
+					context.addIssue({
+						code: "custom",
+						path: ["sources", sourceIndex, "rules", index, "folder"],
+						message: `Folder '${entry.folder}' overlaps rules[${overlapIndex}].folder of the same source.`,
+					});
+				}
 			}
-			ruleIndexes.set(rule.id, index);
 		}
 	});
 
 /** A validated Standards configuration. */
 export type Configuration = z.infer<typeof configurationSchema>;
 
-/** A rule from a validated Standards configuration. */
-export type Rule = z.infer<typeof ruleSchema>;
+/** A source from a validated configuration `sources` list. */
+export type KnowledgeSource = z.infer<typeof knowledgeSourceSchema>;
 
-/** A source from a validated configuration `extends` list. */
-export type ExtensionSource = z.infer<typeof extensionSourceSchema>;
+/** A Git source from a validated configuration `sources` list. */
+export type GitKnowledgeSource = z.infer<typeof gitSourceSchema>;
 
-/** A Git revision from a validated Git extension source. */
-export type GitRevision = z.infer<typeof gitRevisionSchema>;
+/** A local source from a validated configuration `sources` list. */
+export type LocalKnowledgeSource = z.infer<typeof localSourceSchema>;
+
+/** One folder-to-level mapping from a validated knowledge source. */
+export type FolderRule = z.infer<typeof folderRuleSchema>;

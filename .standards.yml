@@ -1,44 +1,9 @@
 ---
-# yaml-language-server: $schema=./packages/standards/schemas/v1/standards.schema.json
-version: 1
-rules:
-  - id: typescript.type-only-exports
-    description: Export types with `export type`, never with a plain `export`.
-    rationale: >
-      Bun does not accept a plain `export` that re-exports a type together
-      with a value, so a shared index or barrel file fails to build. Split the
-      statement: re-export types with `export type` and values with `export`.
-    level: MUST
-    applies_to:
-      include:
-        - "packages/standards/src/**/*.ts"
-      exclude:
-        - "**/*.d.ts"
-    guidance: >
-      Use `export type { SkillReport } from "./types/index.js";` for types.
-      Use a separate `export { runSkill } from "./sdk/runner.js";` for values.
-    references:
-      - AGENTS.md
-
-  - id: documentation.ste100-and-terminology
-    description: >
-      Write specs, docs, and help output in ASD-STE100 English and use the
-      canonical terms from TERMINOLOGY.md.
-    rationale: >
-      A shared vocabulary keeps the domain model stable. Inventing synonyms
-      for a canonical term, such as "rules file" for configuration, makes
-      rules, specs, and agent reviews hard to follow. Short sentences in
-      active voice are easier to translate and read.
-    level: SHOULD
-    applies_to:
-      include:
-        - "specs/**/*.md"
-        - "docs/**/*.md"
-        - "README.md"
-    guidance: >
-      When a concept already has a term in TERMINOLOGY.md, use that exact
-      term. When you need a new term, add it to TERMINOLOGY.md as part of the
-      same change.
-    references:
-      - AGENTS.md
-      - TERMINOLOGY.md
+version: 2
+sources:
+  - path: ./knowledge
+    rules:
+      - folder: decisions
+        level: MUST
+      - folder: practices
+        level: SHOULD

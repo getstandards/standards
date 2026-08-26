@@ -8,7 +8,7 @@ import {
 	fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import type { ChangedFile } from "./change-diff.js";
 import type { EvaluationTask } from "./evaluation-plan.js";
 import { runEvaluation } from "./evaluation-step.js";
@@ -23,9 +23,12 @@ async function makeCheckout(): Promise<string> {
 
 const rule: Rule = {
 	id: "billing.no-float-money",
-	level: "MUST NOT",
-	description: "Money must not be a floating-point number.",
-	rationale: "Floating-point money loses cents.",
+	level: "MUST",
+	title: "Money must not be a floating-point number.",
+	description: "",
+	body: "Floating-point money loses cents.",
+	tags: [],
+	aliases: [],
 };
 
 function taskFor(file: ChangedFile): EvaluationTask {
@@ -100,7 +103,7 @@ describe("runEvaluation", () => {
 		expect(output.usage.invocations).toBe(1);
 	});
 
-	it("keeps a non-empty suggested change and drops an empty one", async () => {
+	it("keeps a non-empty suggestion and suggested change and drops empty ones", async () => {
 		const faux = fauxProvider();
 		const models = createModels();
 		models.setProvider(faux.provider);
@@ -118,6 +121,8 @@ describe("runEvaluation", () => {
 									last_line: 1,
 									evidence: "const total = subtotal * 1.2",
 									reason: "The total is a floating-point number.",
+									suggestion:
+										"Compute the total in minor units with the Money value object.",
 									suggested_change:
 										"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 								},
@@ -126,6 +131,7 @@ describe("runEvaluation", () => {
 									last_line: 3,
 									evidence: "const tip = total * 0.1",
 									reason: "The tip is a floating-point number.",
+									suggestion: "",
 									suggested_change: "",
 								},
 							],
@@ -162,9 +168,13 @@ describe("runEvaluation", () => {
 		});
 
 		expect(output.findings).toHaveLength(2);
+		expect(output.findings[0]?.suggestion).toBe(
+			"Compute the total in minor units with the Money value object.",
+		);
 		expect(output.findings[0]?.suggestedChange).toBe(
 			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 		);
+		expect(output.findings[1]?.suggestion).toBeUndefined();
 		expect(output.findings[1]?.suggestedChange).toBeUndefined();
 	});
 

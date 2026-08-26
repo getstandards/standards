@@ -9,7 +9,7 @@ import {
 	fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import type { Finding } from "./finding.js";
 import {
 	dedupeFindings,
@@ -29,9 +29,12 @@ afterEach(async () => {
 
 const rule: Rule = {
 	id: "billing.no-float-money",
-	level: "MUST NOT",
-	description: "Money must not be a floating-point number.",
-	rationale: "Floating-point money loses cents.",
+	level: "MUST",
+	title: "Money must not be a floating-point number.",
+	description: "",
+	body: "Floating-point money loses cents.",
+	tags: [],
+	aliases: [],
 };
 
 function finding(overrides: Partial<Finding>): Finding {
@@ -255,6 +258,7 @@ describe("runVerification suggested changes", () => {
 			findings: [
 				finding({
 					lines: [1, 1],
+					suggestion: "Compute the total with the Money value object.",
 					suggestedChange: "const total = Money.fromMinorUnits(1200);",
 				}),
 			],
@@ -263,6 +267,9 @@ describe("runVerification suggested changes", () => {
 		});
 
 		expect(output.findings).toHaveLength(1);
+		expect(output.findings[0]?.suggestion).toBe(
+			"Compute the total with the Money value object.",
+		);
 		expect(output.findings[0]?.suggestedChange).toBe(
 			"const total = Money.fromMinorUnits(1200);",
 		);

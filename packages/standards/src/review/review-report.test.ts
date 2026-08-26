@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import { emptyStepUsage } from "./agent-usage.js";
 import type { Finding } from "./finding.js";
 import { modelReferenceSchema } from "./model-reference.js";
@@ -15,8 +15,11 @@ const costBasis = "charged" as const;
 
 function rule(overrides: Partial<Rule> & Pick<Rule, "id" | "level">): Rule {
 	return {
-		description: "description",
-		rationale: "rationale",
+		title: "rule statement",
+		description: "",
+		body: "rationale",
+		tags: [],
+		aliases: [],
 		...overrides,
 	};
 }
@@ -32,34 +35,55 @@ function finding(overrides: Partial<Finding> & Pick<Finding, "rule">): Finding {
 }
 
 describe("buildReviewReport", () => {
-	it("is non-compliant with a MUST NOT finding and attaches rule fields", () => {
+	it("is non-compliant with a MUST finding and attaches rule fields", () => {
+		const report = buildReviewReport({
+			models,
+			counts,
+			usage,
+			costBasis,
+			confirmedFindings: [
+				finding({
+					rule: "money.no-float",
+					suggestion: "Use the Money value object.",
+				}),
+			],
+			ruleSet: [
+				rule({
+					id: "money.no-float",
+					level: "MUST",
+					title: "Money must not be a floating-point number.",
+					description: "Store money in minor units.",
+				}),
+			],
+		});
+
+		expect(report.conclusion).toBe("non-compliant");
+		expect(report.findings[0]?.level).toBe("MUST");
+		expect(report.findings[0]?.title).toBe(
+			"Money must not be a floating-point number.",
+		);
+		expect(report.findings[0]?.description).toBe("Store money in minor units.");
+		expect(report.findings[0]?.suggestion).toBe("Use the Money value object.");
+		expect(report.sources).toEqual([]);
+		expect(report.warnings).toEqual([]);
+		expect(report.suppressed).toEqual([]);
+		expect(report.invalid_suppressions).toEqual([]);
+	});
+
+	it("omits the description of a rule without one", () => {
 		const report = buildReviewReport({
 			models,
 			counts,
 			usage,
 			costBasis,
 			confirmedFindings: [finding({ rule: "money.no-float" })],
-			ruleSet: [
-				rule({
-					id: "money.no-float",
-					level: "MUST NOT",
-					guidance: "Use the Money value object.",
-					references: ["https://example.com/money"],
-				}),
-			],
+			ruleSet: [rule({ id: "money.no-float", level: "MUST" })],
 		});
 
-		expect(report.conclusion).toBe("non-compliant");
-		expect(report.findings[0]?.level).toBe("MUST NOT");
-		expect(report.findings[0]?.guidance).toBe("Use the Money value object.");
-		expect(report.findings[0]?.references).toEqual([
-			"https://example.com/money",
-		]);
-		expect(report.suppressed).toEqual([]);
-		expect(report.invalid_suppressions).toEqual([]);
+		expect(report.findings[0]?.description).toBeUndefined();
 	});
 
-	it("reports version 2 and the accepted suggested change", () => {
+	it("reports version 3 and the accepted suggested change", () => {
 		const report = buildReviewReport({
 			models,
 			counts,
@@ -72,13 +96,43 @@ describe("buildReviewReport", () => {
 						"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 				}),
 			],
-			ruleSet: [rule({ id: "money.no-float", level: "MUST NOT" })],
+			ruleSet: [rule({ id: "money.no-float", level: "MUST" })],
 		});
 
-		expect(report.version).toBe(2);
+		expect(report.version).toBe(3);
 		expect(report.findings[0]?.suggested_change).toBe(
 			"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
 		);
+	});
+
+	it("carries the sources and warnings through to the report", () => {
+		const report = buildReviewReport({
+			models,
+			counts,
+			usage,
+			costBasis,
+			confirmedFindings: [],
+			ruleSet: [],
+			sources: [
+				{
+					repository: "https://example.com/standards.git",
+					ref: "main",
+					commit: "0123456789012345678901234567890123456789",
+				},
+			],
+			warnings: [{ document: "standards/broken.md", problem: "missing level" }],
+		});
+
+		expect(report.sources).toEqual([
+			{
+				repository: "https://example.com/standards.git",
+				ref: "main",
+				commit: "0123456789012345678901234567890123456789",
+			},
+		]);
+		expect(report.warnings).toEqual([
+			{ document: "standards/broken.md", problem: "missing level" },
+		]);
 	});
 
 	it("is compliant when every confirmed finding is a SHOULD warning", () => {

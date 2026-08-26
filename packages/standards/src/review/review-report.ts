@@ -1,4 +1,6 @@
-import type { Rule } from "../config/index.js";
+import type { RequirementLevel } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
+import type { ResolvedGitSource, RuleWarning } from "../rules/rules-loader.js";
 import type { StepUsage } from "./agent-usage.js";
 import type { Finding } from "./finding.js";
 import type { ModelReference } from "./model-reference.js";
@@ -9,15 +11,19 @@ export type ReviewConclusion = "compliant" | "non-compliant";
 /** One confirmed finding with the rule fields the report shows. */
 export interface ReportedFinding {
 	rule: string;
-	level: Rule["level"];
+	level: RequirementLevel;
+	/** The rule statement of the knowledge document. */
+	title: string;
+	/** The one-line summary of the knowledge document, when it has one. */
+	description?: string;
 	path: string;
 	lines: [number, number];
 	evidence: string;
 	reason: string;
+	/** The agent's remediation advice, specific to this change. */
+	suggestion?: string;
 	/** The accepted exact replacement for `lines`, when evaluation proposed one. */
 	suggested_change?: string;
-	guidance?: string;
-	references?: string[];
 }
 
 /**
@@ -75,12 +81,20 @@ export interface ReviewUsage {
  * `--format json`. A text surface renders the same fields.
  */
 export interface ReviewReport {
-	/** Version 2 adds the optional `suggested_change` field to each finding. */
-	version: 2;
+	/**
+	 * Version 3 reads rules from knowledge documents: findings carry `title`
+	 * and `suggestion`, and the report records the resolved commit of each Git
+	 * source and the warnings for skipped documents.
+	 */
+	version: 3;
 	conclusion: ReviewConclusion;
 	models: { evaluation: ModelReference; verification: ModelReference };
 	counts: ReviewCounts;
 	usage: ReviewUsage;
+	/** The resolved commit of each Git knowledge source, for traceability. */
+	sources: ResolvedGitSource[];
+	/** The knowledge documents the loader skipped, with each problem. */
+	warnings: RuleWarning[];
 	findings: ReportedFinding[];
 	suppressed: SuppressedFinding[];
 	invalid_suppressions: InvalidSuppression[];
@@ -94,15 +108,17 @@ export interface ReportInput {
 	costBasis: CostBasis;
 	confirmedFindings: readonly Finding[];
 	ruleSet: readonly Rule[];
+	sources?: readonly ResolvedGitSource[];
+	warnings?: readonly RuleWarning[];
 }
 
 /**
  * Build the review report from the confirmed findings (specs/review.md step 5).
  *
- * It attaches each rule's level, guidance, and references to its findings,
- * sorts the findings by path, then line, then rule id, and computes the
- * conclusion: non-compliant when at least one confirmed `MUST` or `MUST NOT`
- * finding is present, compliant otherwise.
+ * It attaches each rule's level and title to its findings, sorts the findings
+ * by path, then line, then rule id, and computes the conclusion:
+ * non-compliant when at least one confirmed `MUST` finding is present,
+ * compliant otherwise.
  */
 export function buildReviewReport(input: ReportInput): ReviewReport {
 	const rulesById = new Map(input.ruleSet.map((rule) => [rule.id, rule]));
@@ -112,13 +128,13 @@ export function buildReviewReport(input: ReportInput): ReviewReport {
 		.sort(compareFindings);
 
 	const conclusion: ReviewConclusion = findings.some(
-		(finding) => finding.level === "MUST" || finding.level === "MUST NOT",
+		(finding) => finding.level === "MUST",
 	)
 		? "non-compliant"
 		: "compliant";
 
 	return {
-		version: 2,
+		version: 3,
 		conclusion,
 		models: input.models,
 		counts: input.counts,
@@ -127,6 +143,8 @@ export function buildReviewReport(input: ReportInput): ReviewReport {
 			total_cost: input.usage.evaluation.cost + input.usage.verification.cost,
 			cost_basis: input.costBasis,
 		},
+		sources: [...(input.sources ?? [])],
+		warnings: [...(input.warnings ?? [])],
 		findings,
 		suppressed: [],
 		invalid_suppressions: [],
@@ -144,20 +162,21 @@ function toReportedFinding(
 	const reported: ReportedFinding = {
 		rule: finding.rule,
 		level: rule.level,
+		title: rule.title,
 		path: finding.path,
 		lines: finding.lines,
 		evidence: finding.evidence,
 		reason: finding.reason,
 	};
+	if (rule.description !== "") {
+		reported.description = rule.description;
+	}
+	if (finding.suggestion !== undefined) {
+		reported.suggestion = finding.suggestion;
+	}
 	// The suggested change is report data only when verification accepted it.
 	if (finding.suggestedChange !== undefined) {
 		reported.suggested_change = finding.suggestedChange;
-	}
-	if (rule.guidance !== undefined) {
-		reported.guidance = rule.guidance;
-	}
-	if (rule.references !== undefined) {
-		reported.references = rule.references;
 	}
 	return reported;
 }

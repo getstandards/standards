@@ -1,7 +1,5 @@
 import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
 import { createImportProgressReporter } from "../../cache/import-progress.js";
-import { loadRules } from "../../config/configuration-resolver.js";
-import type { Rule } from "../../config/index.js";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
 import { ModelSelectionError } from "../../review/model-selection.js";
@@ -9,6 +7,8 @@ import { ReviewProviderError } from "../../review/review-agent.js";
 import type { ReviewReport } from "../../review/review-report.js";
 import { ReviewTargetError } from "../../review/review-target.js";
 import { runReview } from "../../review/run-review.js";
+import type { RuleLoadResult } from "../../rules/rules-loader.js";
+import { loadRules } from "../../rules/rules-loader.js";
 import { errorMessage } from "../../utils/errors.js";
 import { runGit } from "../../utils/git.js";
 import type { ReviewCliArgs } from "../cli-args.js";
@@ -66,9 +66,9 @@ export async function runReviewCommand(
 	const reportImportProgress = createImportProgressReporter((line) =>
 		output.error(line),
 	);
-	let ruleSet: Rule[];
+	let loaded: RuleLoadResult;
 	try {
-		ruleSet = await loadRules(workingDirectory, {
+		loaded = await loadRules(workingDirectory, {
 			gitSourceStore,
 			reportProgress: reportImportProgress,
 		});
@@ -105,7 +105,9 @@ export async function runReviewCommand(
 			headRevision,
 			workingDirectory,
 			targets: options.targets,
-			ruleSet,
+			ruleSet: loaded.rules,
+			gitSources: loaded.gitSources,
+			warnings: loaded.warnings,
 			models,
 			modelOptions: {
 				model: options.model,

@@ -1,5 +1,5 @@
 import { type Api, type Model, type Models, Type } from "@earendil-works/pi-ai";
-import type { Rule } from "../config/index.js";
+import type { Rule } from "../rules/rule.js";
 import {
 	addInvocationUsage,
 	emptyStepUsage,
@@ -43,7 +43,7 @@ const reportVerdictTool = {
 /** The system prompt that bounds a verification agent to one finding. */
 const VERIFICATION_SYSTEM_PROMPT = `You re-check one finding against one rule and decide whether the finding is a real violation.
 
-Confirm the finding only when its evidence establishes the violation. Reject a finding whose evidence does not. For a SHOULD or SHOULD NOT rule, reject the finding when the change documents a valid reason for the exception. Do not weaken or reword the rule.
+Confirm the finding only when its evidence establishes the violation. Reject a finding whose evidence does not. For a SHOULD rule, reject the finding when the change documents a valid reason for the exception. Do not weaken or reword the rule.
 
 When the finding carries a candidate suggested change, verify it separately: accept it as given only when the replacement resolves the finding without weakening the rule, is valid for the complete finding line range, uses names and behavior you can confirm from the head checkout, and makes no unrelated change. Do not create, modify, or reword the suggested change; you either accept the candidate or reject it. Report your decision through accepts_suggested_change.
 
@@ -245,11 +245,16 @@ async function formatVerification(
 	const ruleLines = [
 		`- id: ${rule.id}`,
 		`  level: ${rule.level}`,
-		`  description: ${rule.description}`,
-		`  rationale: ${rule.rationale}`,
+		`  rule: ${rule.title}`,
 	];
-	if (rule.guidance !== undefined) {
-		ruleLines.push(`  guidance: ${rule.guidance}`);
+	if (rule.description !== "") {
+		ruleLines.push(`  description: ${rule.description}`);
+	}
+	if (rule.body !== "") {
+		ruleLines.push(
+			"  rationale: |",
+			...rule.body.split("\n").map((line) => `    ${line}`),
+		);
 	}
 
 	const region = await readHeadRegion(
@@ -262,6 +267,10 @@ async function formatVerification(
 		? region.text
 		: "The file is not in the head checkout. Use the evidence quote.";
 
+	const suggestionLine =
+		finding.suggestion === undefined
+			? ""
+			: `\n  suggestion: ${finding.suggestion}`;
 	const suggestedChangeLine =
 		finding.suggestedChange === undefined
 			? ""
@@ -274,7 +283,7 @@ Finding:
   path: ${finding.path}
   lines: ${finding.lines[0]}-${finding.lines[1]}
   evidence: ${finding.evidence}
-  reason: ${finding.reason}${suggestedChangeLine}
+  reason: ${finding.reason}${suggestionLine}${suggestedChangeLine}
 
 Head code region:
 ${codeRegion}`;

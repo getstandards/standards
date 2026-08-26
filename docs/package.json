@@ -4,9 +4,7 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "predev": "node scripts/copy-schemas.mjs",
     "dev": "astro dev",
-    "prebuild": "node scripts/copy-schemas.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

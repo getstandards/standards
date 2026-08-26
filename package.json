@@ -12,7 +12,6 @@
 		"build:action": "pnpm --filter @getstandards/standards build:action",
 		"check": "pnpm -r check",
 		"test": "pnpm -r test",
-		"generate:schemas": "pnpm --filter @getstandards/standards generate:schemas",
 		"docs:dev": "pnpm --filter standards-docs dev",
 		"docs:build": "pnpm --filter standards-docs build"
 	}

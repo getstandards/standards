@@ -69,8 +69,8 @@ function configureGitUrlRewrite(
 	});
 }
 
-/** Create a committed Git repository that holds one rule file. */
-async function createGitRulesRepository(): Promise<{
+/** Create a committed Git repository that holds one knowledge bundle. */
+async function createGitKnowledgeRepository(): Promise<{
 	repositoryRoot: string;
 	commit: string;
 }> {
@@ -78,39 +78,37 @@ async function createGitRulesRepository(): Promise<{
 	runGit(repositoryRoot, ["init", "--initial-branch=main"]);
 	runGit(repositoryRoot, ["config", "user.name", "Standards Test"]);
 	runGit(repositoryRoot, ["config", "user.email", "standards@example.com"]);
+	await mkdir(path.join(repositoryRoot, "decisions"), { recursive: true });
 	await writeFile(
-		path.join(repositoryRoot, "rules.yml"),
-		`version: 1
-rules:
-  - id: git.rule
-    level: MUST
-    description: Git rule.
-    rationale: Test rule.
+		path.join(repositoryRoot, "decisions", "git-rule.md"),
+		`---
+title: Git rule
+---
+
+Test rule.
 `,
 	);
 	runGit(repositoryRoot, ["add", "."]);
-	runGit(repositoryRoot, ["commit", "--quiet", "--message", "Add rules"]);
+	runGit(repositoryRoot, ["commit", "--quiet", "--message", "Add knowledge"]);
 	return {
 		repositoryRoot,
 		commit: runGit(repositoryRoot, ["rev-parse", "HEAD"]),
 	};
 }
 
-/** Create a consumer repository pinned to one Git source commit. */
-async function createConsumerRepository(
-	repository: string,
-	commit: string,
-): Promise<string> {
+/** Create a consumer repository that follows one Git source branch. */
+async function createConsumerRepository(repository: string): Promise<string> {
 	const repositoryRoot = await createTemporaryDirectory();
 	await writeFile(
 		path.join(repositoryRoot, ".standards.yml"),
-		`version: 1
-extends:
+		`version: 2
+sources:
   - git:
       repository: ${repository}
-      revision:
-        commit: ${commit}
-      path: rules.yml
+      ref: main
+    rules:
+      - folder: decisions
+        level: MUST
 `,
 	);
 	return repositoryRoot;
@@ -244,13 +242,10 @@ describe("standards cache", () => {
 	});
 
 	it("removes only unreferenced entries on prune", async () => {
-		const gitSource = await createGitRulesRepository();
-		const repository = "https://example.test/rules.git";
+		const gitSource = await createGitKnowledgeRepository();
+		const repository = "https://example.test/knowledge.git";
 		configureGitUrlRewrite(repository, gitSource.repositoryRoot);
-		const consumerRoot = await createConsumerRepository(
-			repository,
-			gitSource.commit,
-		);
+		const consumerRoot = await createConsumerRepository(repository);
 		const cacheDirectory = await createTemporaryDirectory();
 		const bucketDirectory = path.join(cacheDirectory, "git-v1");
 		const unreferencedCommit = "d".repeat(40);
@@ -278,13 +273,10 @@ describe("standards cache", () => {
 	});
 
 	it("reports import progress on standard error and reuses the cache", async () => {
-		const gitSource = await createGitRulesRepository();
-		const repository = "https://example.test/rules.git";
+		const gitSource = await createGitKnowledgeRepository();
+		const repository = "https://example.test/knowledge.git";
 		configureGitUrlRewrite(repository, gitSource.repositoryRoot);
-		const consumerRoot = await createConsumerRepository(
-			repository,
-			gitSource.commit,
-		);
+		const consumerRoot = await createConsumerRepository(repository);
 		const cacheDirectory = await createTemporaryDirectory();
 		const shortCommit = gitSource.commit.slice(0, 12);
 
@@ -302,6 +294,7 @@ describe("standards cache", () => {
 
 		expect(firstStatus).toBe(0);
 		expect(firstRun.stderr).toEqual([
+			`Resolving ${repository} at branch main`,
 			`Fetching ${repository} at ${shortCommit}`,
 		]);
 
@@ -315,6 +308,7 @@ describe("standards cache", () => {
 
 		expect(secondStatus).toBe(0);
 		expect(secondRun.stderr).toEqual([
+			`Resolving ${repository} at branch main`,
 			`Cache hit for ${repository} at ${shortCommit}`,
 		]);
 	});
