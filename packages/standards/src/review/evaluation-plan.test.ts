@@ -17,8 +17,6 @@ function selection(path: string, ruleIds: string[]): FileSelection {
 		title: "rule statement",
 		description: "",
 		body: "rationale",
-		tags: [],
-		aliases: [],
 	}));
 	return { file, rules };
 }

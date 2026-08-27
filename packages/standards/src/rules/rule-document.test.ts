@@ -8,9 +8,6 @@ describe("parseRuleDocument", () => {
 title: Use prompt caching
 description: Cache repeated prompt prefixes.
 status: stable
-type: guide
-tags:
-  - llm
 applies_to:
   include:
     - "src/**/*.ts"
@@ -30,8 +27,6 @@ More prose.
 			"Cache repeated prompt prefixes.",
 		);
 		assert.equal(parsed.frontmatter.status, "stable");
-		assert.equal(parsed.frontmatter.type, "guide");
-		assert.deepEqual(parsed.frontmatter.tags, ["llm"]);
 		assert.deepEqual(parsed.frontmatter.applies_to, {
 			include: ["src/**/*.ts"],
 		});
@@ -44,10 +39,9 @@ More prose.
 
 		assert.ok(parsed.ok);
 		assert.equal(parsed.frontmatter.title, undefined);
-		assert.equal(parsed.frontmatter.description, "");
+		assert.equal(parsed.frontmatter.description, undefined);
 		assert.equal(parsed.frontmatter.status, "stable");
 		assert.equal(parsed.frontmatter.adr_status, undefined);
-		assert.deepEqual(parsed.frontmatter.tags, []);
 		assert.equal(parsed.body, "Body only.");
 	});
 

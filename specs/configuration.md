@@ -33,22 +33,25 @@ version: 2
 ```yaml
 ---
 version: 2
-name: payments-service
-description: Standards for the payments service.
 
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
+  - path: knowledge
+    folders:
+      architecture: MUST
+      engineering-guides:
         level: SHOULD
-  - git:
-      repository: https://github.com/example/engineering-knowledge
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+        documents:
+          exclude:
+            - templates/**
+        applies_to:
+          include:
+            - src/**
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 ```
 
 ## Top-level fields
@@ -56,28 +59,28 @@ sources:
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `version` | integer | Yes | Configuration format version. Version 2 requires the value `2`. |
-| `name` | string | No | Human-readable name of this configuration. |
-| `description` | string | No | Human-readable purpose and scope of this configuration. |
 | `sources` | array of source objects | No | The knowledge sources to read rules from. The default is an empty array. |
 
-Unknown top-level fields MUST cause validation to fail. A file that contains
-only `version` is valid and resolves to an empty rule set.
+Unknown top-level fields MUST cause validation to fail. The configuration MUST
+NOT contain top-level `name` or `description` fields; no implemented behavior
+uses them. A file that contains only `version` is valid and resolves to an
+empty rule set.
 
 ## Knowledge sources
 
 A source is a directory tree that holds an OKF bundle. OKF specifies the
 document format, not folder names, so the configuration states which folders
-hold rules. Each source MUST contain exactly one of `path` or `git`, and MUST
-list one or more `rules` entries.
+hold rules. Standards does not define a folder layout for a bundle. Each source
+MUST contain exactly one of `path` or `repository`, and MUST list a non-empty
+`folders` mapping.
 
 ### Local source
 
 ```yaml
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
+  - path: knowledge
+    folders:
+      architecture: MUST
 ```
 
 `path` MUST be a relative path to a directory. It is resolved from the
@@ -89,20 +92,24 @@ and paths that escape the repository MUST cause resolution to fail.
 
 ```yaml
 sources:
-  - git:
-      repository: https://github.com/example/engineering-knowledge
-      ref: main
-      path: bundles/backend
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 ```
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `repository` | string | Yes | URL of the Git repository. |
-| `ref` | string | No | Branch name without the `refs/heads/` prefix. When absent, the loader uses the repository's default branch. |
+| `branch` | string | No | Branch name without the `refs/heads/` prefix. When absent, the loader uses the repository's default branch. |
 | `path` | string | No | Relative path to the bundle root in the repository. The default is the repository root. |
+| `id_prefix` | string | No | Prefix added to every derived rule id from this source. |
+| `folders` | object | Yes | The folder mappings that Standards enforces. |
+
+The Git fields are not nested under a `git` field. The configuration uses
+`branch`, not `ref`, because Standards accepts only a branch.
 
 `repository` accepts two URL forms:
 
@@ -119,7 +126,7 @@ sources:
 ### Freshness
 
 Knowledge follows the branch. Standards does not pin sources. At the start of
-a run, the loader MUST resolve each `ref` to its current commit with
+a run, the loader MUST resolve each `branch` to its current commit with
 `git ls-remote`, then fetch through the commit-keyed cache defined in
 [Standards source cache](./cache.md). A review always judges the change
 against the most recent accepted knowledge.
@@ -130,21 +137,68 @@ repository's own review process, not a pin.
 
 ### Folder mappings
 
-Each `rules` entry maps one folder of the bundle to a requirement level:
+`folders` maps each bundle-relative folder to a requirement level. The folder
+name is the key. The short form maps a folder directly to a level:
+
+```yaml
+folders:
+  architecture: MUST
+  engineering-guides: SHOULD
+```
+
+The expanded form adds document and target file filters:
+
+```yaml
+folders:
+  engineering-guides:
+    level: SHOULD
+    documents:
+      include:
+        - active/**/*.md
+      exclude:
+        - templates/**
+    applies_to:
+      include:
+        - src/**
+      exclude:
+        - src/generated/**
+```
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `folder` | string | Yes | A bundle-relative directory, for example `decisions` or `guides/clickhouse`. |
 | `level` | string | Yes | `MUST` (blocking) or `SHOULD` (advisory). |
+| `documents` | object | No | An `include`/`exclude` glob filter, relative to the folder, that selects which documents become rules. The default `include` is `**/*.md` and the default `exclude` is empty; exclusion wins. |
+| `applies_to` | object | No | An `include`/`exclude` glob filter, relative to the target repository root, that scopes every rule in the folder to a subset of files. |
 
-Discovery is recursive: every markdown document under the folder is a rule, at
-any depth. `index.md` files are navigation, not rules, and MUST be skipped at
-every depth. A folder that is not listed is not read: enforcement is opt-in
-per folder.
+The short form is equivalent to an expanded form that contains only `level`.
+The folder name has no required meaning: Standards MUST NOT infer a level from
+the folder name.
 
-Two `rules` entries of the same source MUST NOT overlap: a folder that
-contains another mapped folder is a configuration error. This keeps one
-unambiguous level per document.
+Discovery is recursive: every markdown document under the folder that the
+`documents` filter selects is a rule, at any depth. Standards MUST NOT give
+`index.md` or any other file name a special meaning. A folder that is not
+listed is not read: enforcement is opt-in per folder.
+
+Two mapped folders of the same source MUST NOT overlap: a folder that contains
+another mapped folder is a configuration error. This keeps one unambiguous
+level per document. A mapped folder MUST exist inside its knowledge source.
+
+### Rule id prefix
+
+`id_prefix` is an optional source field that solves identity conflicts between
+independent knowledge sources. It MUST match the rule id grammar without a
+final dot, and it is added, followed by a dot, to every derived id from the
+source. For a source with `id_prefix: platform` and `folder: practices`, the
+document `practices/api/pagination.md` has the rule id
+`platform.api.pagination`. When `id_prefix` is absent, the derived id does not
+change.
+
+### Target repository applicability
+
+The folder mapping `applies_to` filter scopes every rule in that folder to a
+subset of target repository files. A knowledge document can also carry the
+`applies_to` frontmatter extension. When both filters exist, both MUST match,
+and exclusion in either filter wins.
 
 ### Requirement levels
 
@@ -168,22 +222,21 @@ review.
 | Field | Default when absent | Use |
 | --- | --- | --- |
 | `title` | The file name without `.md`. | The rule statement shown to the model and in reports. |
-| `description` | Empty. | A one-line summary shown in reports. |
+| `description` | Absent. | A one-line summary shown in reports. An absent description stays absent. |
 | `status` | `stable` (the OKF default), so the document is enforced. | Lifecycle filter. Only `stable` documents are enforced. |
 | `adr_status` | No constraint. | Lifecycle filter. When present, only `accepted` is enforced. |
-| `superseded_by` | None. | Identity alias chain (see Rule identity). |
+| `superseded_by` | None. | Marks a superseded document, which is not enforced (see Superseded documents). |
 | `applies_to` | Every file. | The `include`/`exclude` glob filter (see File applicability). |
-| `type`, `tags` | Empty. | Informational. Not used for selection or level. |
 
-All other OKF fields (`generated`, `verified`, `stale_after`, `sources`) and
-unknown fields MUST be accepted and ignored.
+All other OKF fields (`type`, `tags`, `generated`, `verified`, `stale_after`,
+`sources`) and unknown fields MUST be accepted and ignored. The runtime rule
+carries only the fields that selection, review, or reporting use; it does not
+carry `type`, `tags`, or aliases. Standards MUST NOT reject a document because
+an unused field has a shape Standards does not consume.
 
 `applies_to` is not an OKF field. Standards defines it as an extension. OKF
 tooling ignores unknown frontmatter keys, so the field is additive and safe.
 Bundle authors add it to the documents that need a narrower scope.
-
-`superseded_by` is a document path resolved relative to the directory of the
-document that carries it, for example `2026-03-01-newer-decision.md`.
 
 ### Invalid documents
 
@@ -196,7 +249,6 @@ Cases:
 - a frontmatter value with a wrong type (for example `title` as a list),
 - an unknown `status` or `adr_status` value,
 - a malformed `applies_to` (wrong shape or invalid glob),
-- a `superseded_by` chain that points to a missing document or forms a cycle,
 - a derived `id` that does not match the id grammar.
 
 A skipped document MUST NOT fail the run. Sources follow a branch, so a single
@@ -226,7 +278,8 @@ remove the `.md` extension and replace `/` with `.`. Examples, with
 
 The mapped folder is not part of the `id`. A bundle can rename its top-level
 folders without a change of rule identities; only the configuration mapping
-changes.
+changes. A source `id_prefix`, when present, is added before the derived id,
+followed by a dot.
 
 A derived `id` MUST match this regular expression:
 
@@ -240,16 +293,20 @@ match the grammar is skipped with a warning.
 
 Each resolved rule ID MUST be unique. Two documents can derive the same `id`
 from different mapped folders or different sources; a duplicate identity MUST
-cause resolution to fail.
+cause resolution to fail. The duplicate-id diagnostic SHOULD tell the user that
+`id_prefix` can resolve the conflict.
 
 Standards expects bundles to supersede enforced documents instead of editing
 them, so the identity is stable in practice. A content change creates a new
 document and a new identity.
 
-When the loader meets a document with `superseded_by`, it MUST follow the
-chain to the newest document and enforce only that one. The derived ids of the
-superseded documents become aliases of the final rule. A suppression marker
-that names an alias suppresses the final rule.
+## Superseded documents
+
+A document with `superseded_by` is not enforced and does not become a rule. The
+replacement document is discovered and enforced through its own path. The
+loader does not build aliases, does not follow alias chains, and does not
+validate alias cycles or missing targets. Alias chain validation and
+alias-based suppression will be implemented with suppressions, not before them.
 
 ## Lifecycle
 
@@ -258,8 +315,8 @@ The loader enforces a document only when:
 - `status` is `stable`, and
 - `adr_status`, when present, is `accepted`.
 
-The loader skips `draft` documents. The loader skips `deprecated` documents,
-except to follow their `superseded_by` chain. These lifecycle skips are not
+The loader skips `draft` documents and `deprecated` documents. It also does not
+enforce a document with `superseded_by`. These lifecycle skips are not
 warnings.
 
 ## File applicability
@@ -309,19 +366,19 @@ change and its context.
 An implementation MUST resolve a configuration as follows:
 
 1. Load and validate the entry file.
-2. Resolve each source in list order. For a Git source, resolve the `ref` to
+2. Resolve each source in list order. For a Git source, resolve the `branch` to
    its current commit and fetch that commit through the cache.
 3. For each folder mapping, discover the markdown documents under the folder,
-   recursively, skipping `index.md`.
+   recursively, then keep the documents the folder `documents` filter selects.
 4. Parse each document's frontmatter. Skip an invalid document with a
-   warning. Skip documents that the lifecycle filters exclude.
-5. Follow `superseded_by` chains and attach the superseded ids as aliases of
-   each chain's final rule.
-6. Derive rule ids and reject duplicates across all sources.
+   warning. Skip documents that the lifecycle filters exclude, including
+   documents with `superseded_by`.
+5. Derive rule ids, with the source `id_prefix` when present, and reject
+   duplicates across all sources.
 
-The result is one ordered list of rules and one list of warnings. Rule order
-is stable input for review and reporting, but it does not change rule priority
-or requirement level.
+The loader returns one `Resolution`: an ordered list of rules, the resolved
+Git commits, and the warnings. Rule order is stable input for review and
+reporting, but it does not change rule priority or requirement level.
 
 Failure to reach, fetch, or validate a source, or a mapped folder that does
 not exist in its bundle, MUST fail the complete configuration. An invalid
@@ -341,9 +398,9 @@ Configuration processing has two phases:
 
 Diagnostics SHOULD contain:
 
-- The source directory or Git repository, requested `ref`, and resolved
+- The source directory or Git repository, requested `branch`, and resolved
   commit.
-- The YAML path of the invalid value, such as `sources[0].rules[1].folder`.
+- The YAML path of the invalid value, such as `sources[0].folders`.
 - A concise reason and, when possible, the allowed values.
 
 YAML aliases and anchors MAY be accepted within one file. They MUST NOT change

@@ -199,7 +199,7 @@ describe("renderSummaryComment", () => {
 		report.sources = [
 			{
 				repository: "https://github.com/acme/standards",
-				ref: "main",
+				branch: "main",
 				commit: "b7e21aa000000000000000000000000000000000",
 			},
 		];

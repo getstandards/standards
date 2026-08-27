@@ -1,12 +1,28 @@
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import path from "node:path";
 import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
 import { createImportProgressReporter } from "../../cache/import-progress.js";
+import { loadConfiguration } from "../../config/configuration-loader.js";
+import type { KnowledgeSource } from "../../config/configuration-schema.js";
 import { requirementLevels } from "../../config/configuration-schema.js";
 import { loadRules } from "../../rules/rules-loader.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
 const ENTRY_FILE_NAME = ".standards.yml";
+
+/** The label that names one knowledge source in the validation output. */
+function sourceLabel(source: KnowledgeSource): string {
+	if ("repository" in source) {
+		const branch = source.branch ?? "default branch";
+		const prefix =
+			source.id_prefix === undefined ? "" : ` (id_prefix: ${source.id_prefix})`;
+		return `${source.repository} at ${branch}${prefix}`;
+	}
+	const prefix =
+		source.id_prefix === undefined ? "" : ` (id_prefix: ${source.id_prefix})`;
+	return `${source.path}${prefix}`;
+}
 
 /** Validate and resolve the Standards configuration in the working directory. */
 export async function runValidateCommand({
@@ -33,6 +49,11 @@ export async function runValidateCommand({
 			reportProgress,
 		});
 		const repositoryRoot = await realpath(workingDirectory);
+		// The resolution succeeded, so re-reading the entry file for the source
+		// and folder listing cannot fail on the parse.
+		const configuration = loadConfiguration(
+			await readFile(path.join(repositoryRoot, ENTRY_FILE_NAME), "utf8"),
+		);
 		const levelSummary = requirementLevels
 			.map((level) => ({
 				level,
@@ -47,20 +68,46 @@ export async function runValidateCommand({
 			"",
 			`  Repository:     ${repositoryRoot}`,
 			`  Entry file:     ${ENTRY_FILE_NAME}`,
-			`  Resolved rules: ${rules.length}`,
-			`  Levels:         ${levelSummary || "none"}`,
 		];
-		for (const source of gitSources) {
-			lines.push(
-				`  Git source:     ${source.repository} at ${source.ref}: ${source.commit}`,
-			);
+
+		if (configuration.sources.length > 0) {
+			lines.push("", "Knowledge sources:");
+			for (const source of configuration.sources) {
+				lines.push(`  ${sourceLabel(source)}`);
+				for (const mapping of source.folders) {
+					lines.push(`    ${mapping.folder}: ${mapping.level}`);
+				}
+			}
 		}
+
+		if (rules.length > 0) {
+			lines.push("", "Rules:");
+			for (const rule of rules) {
+				lines.push(`  ${rule.level.padEnd(6)} ${rule.id}`);
+			}
+		}
+
+		if (gitSources.length > 0) {
+			lines.push("", "Git commits:");
+			for (const source of gitSources) {
+				lines.push(
+					`  ${source.repository} at ${source.branch}: ${source.commit}`,
+				);
+			}
+		}
+
 		if (warnings.length > 0) {
 			lines.push("", "Warnings:");
 			for (const warning of warnings) {
 				lines.push(`  ${warning.document}: ${warning.problem}`);
 			}
 		}
+
+		lines.push(
+			"",
+			`  Resolved rules: ${rules.length}`,
+			`  Levels:         ${levelSummary || "none"}`,
+		);
 		output.log(lines.join("\n"));
 		return 0;
 	} catch (error) {

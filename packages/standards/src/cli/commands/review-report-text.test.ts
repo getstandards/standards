@@ -127,7 +127,7 @@ Findings:
 				sources: [
 					{
 						repository: "https://github.com/example/knowledge",
-						ref: "main",
+						branch: "main",
 						commit: "0123456789abcdef0123456789abcdef01234567",
 					},
 				],
@@ -249,7 +249,7 @@ Findings:
 					sources: [
 						{
 							repository: "https://github.com/example/knowledge",
-							ref: "main",
+							branch: "main",
 							commit: "0123456789abcdef0123456789abcdef01234567",
 						},
 					],

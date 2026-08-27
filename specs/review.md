@@ -56,8 +56,8 @@ resolved.
 The invoking surface, such as the CLI or the GitHub Action, selects the base
 and head revisions and supplies the targets. The change is the set of hunks
 between the base and head revisions. Resolution follows
-[Standards configuration format](./configuration.md): each Git source's `ref`
-resolves to its current commit at the start of the run, and the report
+[Standards configuration format](./configuration.md): each Git source's
+`branch` resolves to its current commit at the start of the run, and the report
 records the resolved commits.
 
 ### Full review
@@ -470,7 +470,7 @@ as one JSON document:
 	"sources": [
 		{
 			"repository": "https://github.com/example/engineering-knowledge",
-			"ref": "main",
+			"branch": "main",
 			"commit": "9d64a5838f8dbf26f0f1e51078a29c756970ca31"
 		}
 	],

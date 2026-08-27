@@ -11,9 +11,7 @@ import path from "node:path";
 import { select } from "@inquirer/prompts";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configurationSchema } from "../config/configuration-schema.js";
 import { runGit } from "../utils/git.js";
-import { parseSingleYamlDocument } from "../utils/yaml.js";
 import type { CliOutput } from "./cli-context.js";
 import { runCli } from "./cli-runner.js";
 import { VERSION } from "./version.js";
@@ -99,11 +97,9 @@ describe("runCli", () => {
 		const repositoryRoot = await createRepository(`version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
-        level: SHOULD
+    folders:
+      decisions: MUST
+      practices: SHOULD
 `);
 		await writeRuleDocument(
 			repositoryRoot,
@@ -121,14 +117,19 @@ sources:
 		const exitStatus = await runCli(["validate"], repositoryRoot, output);
 
 		expect(exitStatus).toBe(0);
-		expect(stdout).toEqual([
-			`Standards configuration is valid.
-
-  Repository:     ${canonicalRepositoryRoot}
-  Entry file:     .standards.yml
-  Resolved rules: 2
-  Levels:         MUST: 1, SHOULD: 1`,
-		]);
+		const report = stdout[0] ?? "";
+		expect(report).toContain("Standards configuration is valid.");
+		expect(report).toContain(`  Repository:     ${canonicalRepositoryRoot}`);
+		expect(report).toContain("  Entry file:     .standards.yml");
+		expect(report).toContain("Knowledge sources:");
+		expect(report).toContain("  ./knowledge");
+		expect(report).toContain("    decisions: MUST");
+		expect(report).toContain("    practices: SHOULD");
+		expect(report).toContain("Rules:");
+		expect(report).toMatch(/MUST\s+example-rule/);
+		expect(report).toMatch(/SHOULD\s+example-recommendation/);
+		expect(report).toContain("  Resolved rules: 2");
+		expect(report).toContain("  Levels:         MUST: 1, SHOULD: 1");
 		expect(stderr).toEqual([]);
 	});
 
@@ -148,9 +149,8 @@ sources:
 		const repositoryRoot = await createRepository(`version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
+    folders:
+      decisions: MUST
 `);
 		await writeRuleDocument(
 			repositoryRoot,
@@ -220,23 +220,19 @@ Next action:
 		);
 	});
 
-	it("creates an empty Standards configuration with init", async () => {
+	it("refuses init without a terminal and writes nothing", async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), "standards-init-"));
 		temporaryDirectories.push(directory);
 		const { output, stdout, stderr } = captureOutput();
 
 		const exitStatus = await runCli(["init"], directory, output);
 
-		expect(exitStatus).toBe(0);
-		expect(stdout[0]).toContain("Created .standards.yml");
-		expect(stderr).toEqual([]);
-		const content = await readFile(
-			path.join(directory, ".standards.yml"),
-			"utf8",
-		);
-		expect(
-			configurationSchema.safeParse(parseSingleYamlDocument(content)).success,
-		).toBe(true);
+		expect(exitStatus).toBe(1);
+		expect(stdout).toEqual([]);
+		expect(stderr[0]).toContain("interactive input");
+		await expect(
+			readFile(path.join(directory, ".standards.yml"), "utf8"),
+		).rejects.toThrow();
 	});
 
 	it("fails init when the entry file already exists", async () => {
@@ -605,9 +601,8 @@ Next action:
 			const repositoryRoot = await createRepository(`version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
+    folders:
+      decisions: MUST
 `);
 			await writeRuleDocument(
 				repositoryRoot,

@@ -49,6 +49,86 @@ export type YamlValidationErrorFactory = (
 	yamlPath?: string,
 ) => Error;
 
+/** One flattened validation issue with its full path from the document root. */
+interface FlatIssue {
+	code: string;
+	path: PropertyKey[];
+	message: string;
+	keys?: PropertyKey[];
+}
+
+/** The best issue of a set of sibling issues, with its depth and branch size. */
+interface RankedIssue {
+	issue: FlatIssue;
+	depth: number;
+	/** The number of issues in the union branch this issue came from. */
+	count: number;
+}
+
+/**
+ * Find the most specific issue among a set of sibling Zod issues.
+ *
+ * A `z.union` reports a generic "Invalid input" at the union's own path, with
+ * the real problems nested per branch. This descends into each branch, then
+ * keeps the deepest issue, so the diagnostic points at the field that is
+ * actually wrong (for example a misspelled `documents` key) instead of the
+ * source object. A depth tie prefers the branch with fewer issues, which is the
+ * branch the input most closely matches.
+ */
+function rankIssues(
+	issues: readonly UnknownIssue[],
+	basePath: PropertyKey[],
+): RankedIssue | undefined {
+	let best: RankedIssue | undefined;
+	for (const issue of issues) {
+		const fullPath = [...basePath, ...issue.path];
+		let candidate: RankedIssue | undefined;
+		if (issue.code === "invalid_union" && Array.isArray(issue.errors)) {
+			for (const branch of issue.errors) {
+				const branchBest = rankIssues(branch, fullPath);
+				if (branchBest === undefined) {
+					continue;
+				}
+				const ranked: RankedIssue = { ...branchBest, count: branch.length };
+				if (
+					candidate === undefined ||
+					ranked.depth > candidate.depth ||
+					(ranked.depth === candidate.depth && ranked.count < candidate.count)
+				) {
+					candidate = ranked;
+				}
+			}
+		} else {
+			candidate = {
+				issue: {
+					code: issue.code,
+					path: fullPath,
+					message: issue.message,
+					keys: issue.keys,
+				},
+				depth: fullPath.length,
+				count: 1,
+			};
+		}
+		if (
+			candidate !== undefined &&
+			(best === undefined || candidate.depth > best.depth)
+		) {
+			best = candidate;
+		}
+	}
+	return best;
+}
+
+/** The Zod issue fields this module reads, across issue codes. */
+interface UnknownIssue {
+	code: string;
+	path: PropertyKey[];
+	message: string;
+	keys?: PropertyKey[];
+	errors?: UnknownIssue[][];
+}
+
 /** Convert a Zod issue path to the YAML path format used by diagnostics. */
 function formatYamlPath(path: PropertyKey[]): string {
 	let yamlPath = "";
@@ -83,14 +163,18 @@ export function parseAndValidateYamlDocument<Output>(
 		return result.data;
 	}
 
-	const issue = result.error.issues[0];
-	if (issue === undefined) {
+	const ranked = rankIssues(
+		result.error.issues as unknown as UnknownIssue[],
+		[],
+	);
+	if (ranked === undefined) {
 		throw createError(`${sourceName}: Invalid document.`);
 	}
+	const issue = ranked.issue;
 
 	const issuePath = [...issue.path];
 	if (issue.code === "unrecognized_keys") {
-		const unrecognizedKey = issue.keys[0];
+		const unrecognizedKey = issue.keys?.[0];
 		if (unrecognizedKey !== undefined) {
 			issuePath.push(unrecognizedKey);
 		}

@@ -9,7 +9,7 @@ import { formatValidationError } from "../cli/commands/validate-diagnostic.js";
 import { createAutomationModels } from "../credentials/models-runtime.js";
 import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
 import { runReview } from "../review/run-review.js";
-import type { RuleLoadResult } from "../rules/rules-loader.js";
+import type { Resolution } from "../rules/rules-loader.js";
 import { loadRules } from "../rules/rules-loader.js";
 import type { ActionContext } from "./action-context.js";
 import {
@@ -310,7 +310,7 @@ async function runReviewPipeline(
 	// Each run starts with an empty source cache on an ephemeral runner, and
 	// the action never restores one from a CI cache service (specs/cache.md).
 	const gitSourceStore = createTemporaryGitSourceStore();
-	let loaded: RuleLoadResult;
+	let loaded: Resolution;
 	try {
 		loaded = await loadRules(context.workspace, { gitSourceStore });
 	} catch (error) {
@@ -331,9 +331,7 @@ async function runReviewPipeline(
 		baseRevision: revisions.baseRevision,
 		headRevision: revisions.headRevision,
 		workingDirectory: context.workspace,
-		ruleSet: loaded.rules,
-		gitSources: loaded.gitSources,
-		warnings: loaded.warnings,
+		resolution: loaded,
 		models,
 		environment: review.environment,
 		reportProgress: (line) => console.log(line),

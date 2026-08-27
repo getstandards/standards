@@ -16,10 +16,7 @@ const costBasis = "charged" as const;
 function rule(overrides: Partial<Rule> & Pick<Rule, "id" | "level">): Rule {
 	return {
 		title: "rule statement",
-		description: "",
 		body: "rationale",
-		tags: [],
-		aliases: [],
 		...overrides,
 	};
 }
@@ -116,7 +113,7 @@ describe("buildReviewReport", () => {
 			sources: [
 				{
 					repository: "https://example.com/standards.git",
-					ref: "main",
+					branch: "main",
 					commit: "0123456789012345678901234567890123456789",
 				},
 			],
@@ -126,7 +123,7 @@ describe("buildReviewReport", () => {
 		expect(report.sources).toEqual([
 			{
 				repository: "https://example.com/standards.git",
-				ref: "main",
+				branch: "main",
 				commit: "0123456789012345678901234567890123456789",
 			},
 		]);

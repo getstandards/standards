@@ -103,12 +103,10 @@ async function createConsumerRepository(repository: string): Promise<string> {
 		path.join(repositoryRoot, ".standards.yml"),
 		`version: 2
 sources:
-  - git:
-      repository: ${repository}
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${repository}
+    branch: main
+    folders:
+      decisions: MUST
 `,
 	);
 	return repositoryRoot;

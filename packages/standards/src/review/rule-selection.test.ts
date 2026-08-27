@@ -9,8 +9,6 @@ function rule(overrides: Partial<Rule> & Pick<Rule, "id">): Rule {
 		title: "rule statement",
 		description: "",
 		body: "rationale",
-		tags: [],
-		aliases: [],
 		...overrides,
 	};
 }

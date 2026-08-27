@@ -10,7 +10,7 @@ const SHORT_COMMIT_LENGTH = 12;
  */
 export interface ImportProgressReporter {
 	/** A run resolves a branch to its current commit. */
-	reportResolvingRevision(repository: string, ref: string): void;
+	reportResolvingRevision(repository: string, branch: string): void;
 	/** An import reads a source from the persistent cache. */
 	reportCacheHit(repository: string, commit: string): void;
 	/** An import fetches a source over the network. */
@@ -33,8 +33,8 @@ export function createImportProgressReporter(
 	writeLine: (line: string) => void,
 ): ImportProgressReporter {
 	return {
-		reportResolvingRevision: (repository, ref) => {
-			writeLine(`Resolving ${repository} at branch ${ref}`);
+		reportResolvingRevision: (repository, branch) => {
+			writeLine(`Resolving ${repository} at branch ${branch}`);
 		},
 		reportCacheHit: (repository, commit) => {
 			writeLine(`Cache hit for ${repository} at ${formatShortCommit(commit)}`);

@@ -168,7 +168,7 @@ function toReportedFinding(
 		evidence: finding.evidence,
 		reason: finding.reason,
 	};
-	if (rule.description !== "") {
+	if (rule.description !== undefined) {
 		reported.description = rule.description;
 	}
 	if (finding.suggestion !== undefined) {

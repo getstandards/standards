@@ -1,5 +1,6 @@
 import { readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import picomatch from "picomatch";
 import type {
 	GitSourceStore,
 	PopulateGitCheckout,
@@ -8,7 +9,9 @@ import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
 import type { ImportProgressReporter } from "../cache/import-progress.js";
 import { loadConfiguration } from "../config/configuration-loader.js";
 import type {
-	FolderRule,
+	AppliesTo,
+	DocumentFilter,
+	FolderMapping,
 	GitKnowledgeSource,
 	KnowledgeSource,
 } from "../config/configuration-schema.js";
@@ -32,7 +35,7 @@ export class ConfigurationResolutionError extends Error {
 /** The resolved commit of one Git knowledge source, for traceability. */
 export interface ResolvedGitSource {
 	repository: string;
-	ref: string;
+	branch: string;
 	commit: string;
 }
 
@@ -42,8 +45,11 @@ export interface RuleWarning {
 	problem: string;
 }
 
-/** The rules, resolved Git commits, and warnings of one load. */
-export interface RuleLoadResult {
+/**
+ * The complete output of configuration loading and rule discovery: the ordered
+ * rules, the resolved Git commits, and the warnings (specs/configuration.md).
+ */
+export interface Resolution {
 	rules: Rule[];
 	gitSources: ResolvedGitSource[];
 	warnings: RuleWarning[];
@@ -147,19 +153,19 @@ function fetchGitCheckout(
 
 /**
  * Resolve a branch to its current commit with `git ls-remote`
- * (specs/configuration.md freshness). Without a `ref`, it resolves the
+ * (specs/configuration.md freshness). Without a `branch`, it resolves the
  * repository's default branch through the symbolic `HEAD` reference.
  */
 async function resolveBranchCommit(
 	repository: string,
-	ref: string | undefined,
+	branch: string | undefined,
 	workingDirectory: string,
-): Promise<{ ref: string; commit: string }> {
+): Promise<{ branch: string; commit: string }> {
 	let output: string;
 	const listArguments =
-		ref === undefined
+		branch === undefined
 			? ["ls-remote", "--symref", repository, "HEAD"]
-			: ["ls-remote", repository, `refs/heads/${ref}`];
+			: ["ls-remote", repository, `refs/heads/${branch}`];
 	try {
 		output = await runGit(listArguments, workingDirectory);
 	} catch (error) {
@@ -169,16 +175,16 @@ async function resolveBranchCommit(
 	}
 
 	const lines = output.split("\n").filter((line) => line !== "");
-	if (ref !== undefined) {
+	if (branch !== undefined) {
 		const commit = lines
 			.map((line) => line.split("\t"))
-			.find(([, name]) => name === `refs/heads/${ref}`)?.[0];
+			.find(([, name]) => name === `refs/heads/${branch}`)?.[0];
 		if (commit === undefined) {
 			throw new ConfigurationResolutionError(
-				`Branch '${ref}' does not exist in '${repository}'.`,
+				`Branch '${branch}' does not exist in '${repository}'.`,
 			);
 		}
-		return { ref, commit: commit.toLowerCase() };
+		return { branch, commit: commit.toLowerCase() };
 	}
 
 	const symrefMatch = lines
@@ -198,7 +204,7 @@ async function resolveBranchCommit(
 		);
 	}
 	return {
-		ref: symrefMatch?.[1] ?? "HEAD",
+		branch: symrefMatch?.[1] ?? "HEAD",
 		commit: headCommit.toLowerCase(),
 	};
 }
@@ -210,14 +216,7 @@ interface DiscoveredDocument {
 	bundlePath: string;
 	/** The document path relative to its mapped folder, with `/` separators. */
 	folderPath: string;
-	level: FolderRule["level"];
-}
-
-/** A discovered document whose frontmatter parsed and id derived. */
-interface ParsedDocument extends DiscoveredDocument {
-	id: string;
-	frontmatter: RuleFrontmatter;
-	body: string;
+	mapping: FolderMapping;
 }
 
 /** Recursively collect the markdown documents under a directory, sorted. */
@@ -231,12 +230,7 @@ async function walkMarkdownFiles(directory: string): Promise<string[]> {
 			files.push(...(await walkMarkdownFiles(entryPath)));
 			continue;
 		}
-		// index.md files are navigation, not rules (specs/configuration.md).
-		if (
-			entry.isFile() &&
-			entry.name.endsWith(".md") &&
-			entry.name !== "index.md"
-		) {
+		if (entry.isFile() && entry.name.endsWith(".md")) {
 			files.push(entryPath);
 		}
 	}
@@ -248,14 +242,77 @@ function portableRelativePath(rootDirectory: string, filePath: string): string {
 	return path.relative(rootDirectory, filePath).split(path.sep).join("/");
 }
 
+/** Match repository or document paths with `/` separators and dot files. */
+const GLOB_MATCH_OPTIONS: picomatch.PicomatchOptions = { dot: true };
+
+/**
+ * Build a predicate that keeps a folder-relative document path when it matches
+ * the `documents` filter. The default `include` glob is `**` + `/*.md`, and the
+ * default `exclude` list is empty; exclusion wins (specs/configuration.md).
+ */
+function compileDocumentFilter(
+	filter: DocumentFilter | undefined,
+): (folderPath: string) => boolean {
+	const isIncluded = picomatch(
+		filter?.include ?? ["**/*.md"],
+		GLOB_MATCH_OPTIONS,
+	);
+	const exclude = filter?.exclude ?? [];
+	const isExcluded =
+		exclude.length === 0 ? () => false : picomatch(exclude, GLOB_MATCH_OPTIONS);
+	return (folderPath) => isIncluded(folderPath) && !isExcluded(folderPath);
+}
+
+/**
+ * Combine the folder mapping `applies_to` with the document frontmatter
+ * `applies_to` into one filter. Both filters must match, so the excludes are
+ * unioned; an absent side imposes no constraint (specs/configuration.md).
+ */
+function combineAppliesTo(
+	folderFilter: AppliesTo | undefined,
+	documentFilter: AppliesTo | undefined,
+): AppliesTo | undefined {
+	if (folderFilter === undefined) {
+		return documentFilter;
+	}
+	if (documentFilter === undefined) {
+		return folderFilter;
+	}
+	const include = mergeGlobs(folderFilter.include, documentFilter.include);
+	const exclude = mergeGlobs(folderFilter.exclude, documentFilter.exclude);
+	const combined: AppliesTo = {};
+	if (include !== undefined) {
+		combined.include = include;
+	}
+	if (exclude !== undefined) {
+		combined.exclude = exclude;
+	}
+	return combined;
+}
+
+/** Merge two optional glob lists into one deduplicated list, or undefined. */
+function mergeGlobs(
+	first: readonly string[] | undefined,
+	second: readonly string[] | undefined,
+): string[] | undefined {
+	const merged = [...new Set([...(first ?? []), ...(second ?? [])])];
+	return merged.length === 0 ? undefined : merged;
+}
+
 /** Derive a rule id from a document path relative to its mapped folder. */
-function deriveRuleId(folderPath: string): string {
-	return folderPath.slice(0, -".md".length).replaceAll("/", ".");
+function deriveRuleId(
+	folderPath: string,
+	idPrefix: string | undefined,
+): string {
+	const derived = folderPath.slice(0, -".md".length).replaceAll("/", ".");
+	return idPrefix === undefined ? derived : `${idPrefix}.${derived}`;
 }
 
 /** The bundle root directory and naming context of one resolved source. */
 interface ResolvedBundle {
 	root: string;
+	/** The rule id prefix added to every derived id of this source. */
+	idPrefix?: string;
 	/** The readable source name used by duplicate-identity errors. */
 	label: string;
 	/** Return the readable name of one document for warnings. */
@@ -264,19 +321,19 @@ interface ResolvedBundle {
 
 /**
  * Load the rules of one resolved bundle: discover the documents under each
- * mapped folder, parse them, resolve `superseded_by` chains, and append the
- * enforced rules. Invalid documents append warnings instead
- * (specs/configuration.md).
+ * mapped folder, filter them, parse them, and append the enforced rules. A
+ * document with `superseded_by` is not enforced. Invalid documents append
+ * warnings instead (specs/configuration.md).
  */
 async function loadBundleRules(
 	bundle: ResolvedBundle,
-	folderRules: readonly FolderRule[],
+	folderMappings: readonly FolderMapping[],
 	rules: Rule[],
 	ruleSources: Map<string, string>,
 	warnings: RuleWarning[],
 ): Promise<void> {
 	const discovered: DiscoveredDocument[] = [];
-	for (const mapping of folderRules) {
+	for (const mapping of folderMappings) {
 		const folderDirectory = path.join(
 			bundle.root,
 			...mapping.folder.split("/"),
@@ -293,18 +350,21 @@ async function loadBundleRules(
 			);
 		}
 
+		const keepDocument = compileDocumentFilter(mapping.documents);
 		for (const absolutePath of await walkMarkdownFiles(folderDirectory)) {
+			const folderPath = portableRelativePath(folderDirectory, absolutePath);
+			if (!keepDocument(folderPath)) {
+				continue;
+			}
 			discovered.push({
 				absolutePath,
 				bundlePath: portableRelativePath(bundle.root, absolutePath),
-				folderPath: portableRelativePath(folderDirectory, absolutePath),
-				level: mapping.level,
+				folderPath,
+				mapping,
 			});
 		}
 	}
 
-	const parsedByBundlePath = new Map<string, ParsedDocument>();
-	const ordered: ParsedDocument[] = [];
 	for (const document of discovered) {
 		const documentName = bundle.documentLabel(document.bundlePath);
 		let sourceText: string;
@@ -323,8 +383,20 @@ async function loadBundleRules(
 			warnings.push({ document: documentName, problem: parsed.problem });
 			continue;
 		}
+		const frontmatter: RuleFrontmatter = parsed.frontmatter;
 
-		const id = deriveRuleId(document.folderPath);
+		// A superseded document is not enforced; suppressions, not the loader,
+		// will read aliases (specs/configuration.md superseded documents).
+		const enforced =
+			frontmatter.superseded_by === undefined &&
+			frontmatter.status === "stable" &&
+			(frontmatter.adr_status === undefined ||
+				frontmatter.adr_status === "accepted");
+		if (!enforced) {
+			continue;
+		}
+
+		const id = deriveRuleId(document.folderPath, bundle.idPrefix);
 		if (!RULE_ID_PATTERN.test(id)) {
 			warnings.push({
 				document: documentName,
@@ -333,89 +405,32 @@ async function loadBundleRules(
 			continue;
 		}
 
-		const parsedDocument: ParsedDocument = {
-			...document,
-			id,
-			frontmatter: parsed.frontmatter,
-			body: parsed.body,
-		};
-		parsedByBundlePath.set(document.bundlePath, parsedDocument);
-		ordered.push(parsedDocument);
-	}
-
-	// A superseded document aliases the newest document of its chain
-	// (specs/configuration.md rule identity).
-	const aliasesByBundlePath = new Map<string, string[]>();
-	for (const document of ordered) {
-		if (document.frontmatter.superseded_by === undefined) {
-			continue;
-		}
-		const documentName = bundle.documentLabel(document.bundlePath);
-		const visited = new Set<string>([document.bundlePath]);
-		let current = document;
-		let problem: string | undefined;
-		while (current.frontmatter.superseded_by !== undefined) {
-			const targetPath = path.posix.normalize(
-				path.posix.join(
-					path.posix.dirname(current.bundlePath),
-					current.frontmatter.superseded_by,
-				),
-			);
-			const target = parsedByBundlePath.get(targetPath);
-			if (target === undefined) {
-				problem = `superseded_by points to '${targetPath}', which is not a mapped knowledge document.`;
-				break;
-			}
-			if (visited.has(targetPath)) {
-				problem = "The superseded_by chain forms a cycle.";
-				break;
-			}
-			visited.add(targetPath);
-			current = target;
-		}
-		if (problem !== undefined) {
-			warnings.push({ document: documentName, problem });
-			continue;
-		}
-		const aliases = aliasesByBundlePath.get(current.bundlePath) ?? [];
-		aliases.push(document.id);
-		aliasesByBundlePath.set(current.bundlePath, aliases);
-	}
-
-	for (const document of ordered) {
-		const enforced =
-			document.frontmatter.superseded_by === undefined &&
-			document.frontmatter.status === "stable" &&
-			(document.frontmatter.adr_status === undefined ||
-				document.frontmatter.adr_status === "accepted");
-		if (!enforced) {
-			continue;
-		}
-
-		const previousSource = ruleSources.get(document.id);
+		const previousSource = ruleSources.get(id);
 		if (previousSource !== undefined) {
 			throw new ConfigurationResolutionError(
-				`Rule ID '${document.id}' in '${bundle.label}' duplicates the rule from '${previousSource}'.`,
+				`Rule ID '${id}' in '${bundle.label}' duplicates the rule from '${previousSource}'. Set 'id_prefix' on a source to resolve the conflict.`,
 			);
 		}
-		ruleSources.set(document.id, bundle.label);
+		ruleSources.set(id, bundle.label);
 
-		const aliases = [
-			...new Set(aliasesByBundlePath.get(document.bundlePath) ?? []),
-		].sort();
-		rules.push({
-			id: document.id,
-			level: document.level,
+		const rule: Rule = {
+			id,
+			level: document.mapping.level,
 			title:
-				document.frontmatter.title ??
-				path.posix.basename(document.folderPath, ".md"),
-			description: document.frontmatter.description,
-			body: document.body,
-			applies_to: document.frontmatter.applies_to,
-			type: document.frontmatter.type,
-			tags: document.frontmatter.tags,
-			aliases,
-		});
+				frontmatter.title ?? path.posix.basename(document.folderPath, ".md"),
+			body: parsed.body,
+		};
+		if (frontmatter.description !== undefined) {
+			rule.description = frontmatter.description;
+		}
+		const appliesTo = combineAppliesTo(
+			document.mapping.applies_to,
+			frontmatter.applies_to,
+		);
+		if (appliesTo !== undefined) {
+			rule.applies_to = appliesTo;
+		}
+		rules.push(rule);
 	}
 }
 
@@ -423,7 +438,7 @@ async function loadBundleRules(
  * Load the rules that the configuration's knowledge sources declare
  * (specs/configuration.md resolution).
  *
- * Sources follow their branch: each Git `ref` resolves to its current commit
+ * Sources follow their branch: each Git `branch` resolves to its current commit
  * at the start of the run, and the resolved commits are returned for the
  * report. A bad document is skipped with a warning and never fails the run; a
  * configuration mistake — a missing folder, an unreachable source, a
@@ -432,7 +447,7 @@ async function loadBundleRules(
 export async function loadRules(
 	repositoryRoot: string,
 	options: LoadRulesOptions = {},
-): Promise<RuleLoadResult> {
+): Promise<Resolution> {
 	const canonicalRepositoryRoot =
 		await canonicalizeRepositoryRoot(repositoryRoot);
 
@@ -457,19 +472,19 @@ export async function loadRules(
 	const gitSources: ResolvedGitSource[] = [];
 	const resolvedBranches = new Map<
 		string,
-		Promise<{ ref: string; commit: string }>
+		Promise<{ branch: string; commit: string }>
 	>();
 	const checkouts = new Map<string, Promise<string>>();
 
 	function resolveBranch(
-		source: GitKnowledgeSource["git"],
-	): Promise<{ ref: string; commit: string }> {
-		const key = `${source.repository} ${source.ref ?? ""}`;
+		source: GitKnowledgeSource,
+	): Promise<{ branch: string; commit: string }> {
+		const key = JSON.stringify([source.repository, source.branch ?? null]);
 		let resolved = resolvedBranches.get(key);
 		if (resolved === undefined) {
 			resolved = resolveBranchCommit(
 				source.repository,
-				source.ref,
+				source.branch,
 				canonicalRepositoryRoot,
 			);
 			resolvedBranches.set(key, resolved);
@@ -481,7 +496,7 @@ export async function loadRules(
 		repository: string,
 		commit: string,
 	): Promise<string> {
-		const key = `${repository} ${commit}`;
+		const key = JSON.stringify([repository, commit]);
 		let checkout = checkouts.get(key);
 		if (checkout === undefined) {
 			checkout = gitSourceStore
@@ -502,46 +517,47 @@ export async function loadRules(
 	async function resolveBundle(
 		source: KnowledgeSource,
 	): Promise<ResolvedBundle> {
-		if ("git" in source) {
+		if ("repository" in source) {
 			options.reportProgress?.reportResolvingRevision(
-				source.git.repository,
-				source.git.ref ?? "HEAD",
+				source.repository,
+				source.branch ?? "HEAD",
 			);
-			const { ref, commit } = await resolveBranch(source.git);
+			const { branch, commit } = await resolveBranch(source);
 			if (
 				!gitSources.some(
 					(resolved) =>
-						resolved.repository === source.git.repository &&
-						resolved.ref === ref,
+						resolved.repository === source.repository &&
+						resolved.branch === branch,
 				)
 			) {
-				gitSources.push({ repository: source.git.repository, ref, commit });
+				gitSources.push({ repository: source.repository, branch, commit });
 			}
-			const checkoutRoot = await provideCheckout(source.git.repository, commit);
+			const checkoutRoot = await provideCheckout(source.repository, commit);
 			let bundleRoot = checkoutRoot;
-			if (source.git.path !== undefined) {
-				const candidate = path.resolve(checkoutRoot, source.git.path);
+			if (source.path !== undefined) {
+				const candidate = path.resolve(checkoutRoot, source.path);
 				if (!isWithinRoot(checkoutRoot, candidate)) {
 					throw new ConfigurationResolutionError(
-						`Knowledge source path '${source.git.path}' escapes the repository '${source.git.repository}'.`,
+						`Knowledge source path '${source.path}' escapes the repository '${source.repository}'.`,
 					);
 				}
 				try {
 					bundleRoot = await realpath(candidate);
 				} catch (error) {
 					throw new ConfigurationResolutionError(
-						`Cannot access path '${source.git.path}' in '${source.git.repository}': ${errorMessage(error)}`,
+						`Cannot access path '${source.path}' in '${source.repository}': ${errorMessage(error)}`,
 					);
 				}
 				if (!isWithinRoot(checkoutRoot, bundleRoot)) {
 					throw new ConfigurationResolutionError(
-						`Knowledge source path '${source.git.path}' resolves outside the repository '${source.git.repository}'.`,
+						`Knowledge source path '${source.path}' resolves outside the repository '${source.repository}'.`,
 					);
 				}
 			}
-			const label = `${source.git.repository}@${ref}`;
+			const label = `${source.repository}@${branch}`;
 			return {
 				root: bundleRoot,
+				idPrefix: source.id_prefix,
 				label,
 				documentLabel: (bundlePath) => `${label}:${bundlePath}`,
 			};
@@ -569,6 +585,7 @@ export async function loadRules(
 		const label = portableRelativePath(canonicalRepositoryRoot, bundleRoot);
 		return {
 			root: bundleRoot,
+			idPrefix: source.id_prefix,
 			label,
 			documentLabel: (bundlePath) => `${label}/${bundlePath}`,
 		};
@@ -577,7 +594,13 @@ export async function loadRules(
 	try {
 		for (const source of configuration.sources) {
 			const bundle = await resolveBundle(source);
-			await loadBundleRules(bundle, source.rules, rules, ruleSources, warnings);
+			await loadBundleRules(
+				bundle,
+				source.folders,
+				rules,
+				ruleSources,
+				warnings,
+			);
 		}
 		return { rules, gitSources, warnings };
 	} finally {

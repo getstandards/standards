@@ -120,15 +120,37 @@ summary that a command writes to standard output.
 
 ## `init`
 
-`standards init` creates the entry file for a repository that has none.
+`standards init` creates the entry file for a repository that has none through
+an interactive dialogue.
 
-The command MUST create `.standards.yml` in the current working directory.
-The created file MUST be a valid version 2 configuration with an empty source
-list, and SHOULD contain commented examples for a local and a Git knowledge
-source.
+When standard input and standard output are terminals, the command MUST run an
+interactive dialogue that:
 
-On success, the command MUST report the created path and exit with status
-`0`.
+1. Asks whether the knowledge source is local or Git.
+2. Asks for the local bundle root, or the Git repository, branch, and optional
+   bundle path.
+3. Scans the source and shows the folders that contain markdown documents with
+   their document counts. It MUST NOT propose semantic folder names.
+4. Lets the user select one or more folders, or enter folder paths manually
+   when the source cannot be scanned.
+5. Asks for the `MUST` or `SHOULD` level of each selected folder.
+6. Lets the user add document exclusions for a folder.
+7. Lets the user set a target repository `applies_to` filter for a folder.
+8. Asks for an optional `id_prefix`.
+9. Lets the user add another knowledge source.
+10. Shows the complete `.standards.yml` preview and asks for confirmation
+    before it writes the file.
+
+The command MUST NOT define a folder layout for the bundle: the user selects
+the folders and levels that apply.
+
+On success, the command MUST write `.standards.yml` in the current working
+directory, tell the user to run `standards validate`, and exit with status
+`0`. Cancellation MUST leave the repository unchanged.
+
+Without a terminal, the command MUST NOT write an empty or assumed
+configuration. It MUST report that interactive input is required, leave the
+repository unchanged, and exit with status `1`.
 
 When `.standards.yml` already exists, the command MUST print a diagnostic and
 exit with status `1`. It MUST NOT modify the existing file.
@@ -139,10 +161,13 @@ exit with status `1`. It MUST NOT modify the existing file.
 directory and resolve its complete configuration graph as defined in
 [Standards configuration format](./configuration.md).
 
-On success, the command MUST print the canonical repository path, entry-file
-name, number of resolved rules, and rule counts grouped by requirement level.
-It MUST print the resolved commit of each Git source and the warnings for
-skipped knowledge documents. It MUST exit with status `0`.
+On success, the command MUST print the canonical repository path and the
+entry-file name. It MUST list each knowledge source with its mapped folders and
+their levels, and each discovered rule with its derived id and level, so the
+user can confirm exactly which documents became rules. It MUST print the
+resolved commit of each Git source, the warnings for skipped knowledge
+documents, the number of resolved rules, and the rule counts grouped by
+requirement level. It MUST exit with status `0`.
 
 If configuration loading, validation, or resolution fails, the command MUST
 print an invalid-configuration heading and the diagnostic to standard error.
@@ -170,7 +195,7 @@ print every resolved rule in resolution order with:
 
 - The rule `id` and `level`.
 - The rule's source: the document path for a local source, or the repository,
-  `ref`, resolved commit, and document path for a Git source.
+  `branch`, resolved commit, and document path for a Git source.
 
 With `--format json`, the command MUST print the resolved rules as one JSON
 document, each rule with its complete fields and its source.

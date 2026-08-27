@@ -1,276 +1,425 @@
-# Specification: rules from OKF knowledge documents
+# Specification: simplify OKF rule discovery and setup
 
-Status: draft.
+Status: ready for implementation.
 
-This document specifies the migration of Standards from `.standards.yml` rule
-documents to knowledge documents in the Open Knowledge Format (OKF).
+## Purpose
 
-## Goal
+This change simplifies how a user connects Open Knowledge Format (OKF)
+documents to Standards. It also removes internal data and resolution work that
+the review does not use.
 
-Standards reads rules from markdown documents with YAML frontmatter instead of
-a YAML rule list. A rule is an OKF knowledge document. The configuration maps
-knowledge folders to requirement levels. The review pipeline keeps its current
-logic. It detects which rules apply to a change, evaluates the change against
-them, and reports findings.
+Standards MUST NOT define a folder layout for an OKF bundle. The user selects
+the folders and requirement levels that apply to each knowledge source.
 
-## Background
+## Goals
 
-Today, rules live in `.standards.yml`. Each rule is a flat object: `id`,
-`level`, `description`, `rationale`, `applies_to`, `guidance`, `references`.
-The resolver walks `extends` sources, and `loadRules` returns a flat rule set.
+- Make `.standards.yml` describe user policy, not loader implementation.
+- Let a user configure an existing OKF bundle without changing its layout.
+- Make `standards init` discover the user's layout through an interactive
+  dialogue.
+- Keep the resolved rule data limited to fields that the review uses.
+- Pass one resolution value through the review pipeline.
+- Remove rule alias work until suppressions use aliases.
+- Keep source and cache lookup keys searchable as text.
 
-An OKF document has YAML frontmatter (`type`, `title`, `description`, `tags`,
-`status`, and optional provenance fields) and a prose body. OKF specifies the
-document format. OKF does not specify folder names. Two bundles can organize
-the same knowledge under different directory structures. The configuration
-must therefore state which folders hold rules.
+## Non-goals
+
+This change does not:
+
+- define standard OKF folder names,
+- create `decisions`, `practices`, or other folders by default,
+- pin Git sources to a tag or commit,
+- add authentication, cache, model, or review settings to `.standards.yml`,
+- implement suppressions,
+- add source priorities or rule ordering semantics,
+- add names or descriptions that no command reports.
+
+## Domain model
+
+### Knowledge source
+
+A knowledge source is one local directory or Git repository that contains an
+OKF bundle. A Git source can select a path inside the repository.
+
+### Folder mapping
+
+A folder mapping selects one folder inside a knowledge source. It sets the
+requirement level of the rules discovered in that folder. It can also filter
+the knowledge documents and target repository files that those rules apply to.
+
+The folder name has no required meaning. Standards MUST NOT infer a level from
+the folder name.
+
+### Rule
+
+A rule is one enforced knowledge document after resolution. A rule is not a
+configuration entry. Its requirement level and consumer scope come from its
+folder mapping.
+
+### Resolution
+
+A resolution is the complete output of configuration loading and rule
+discovery. It contains the ordered rules, resolved Git sources, and warnings.
 
 ## Configuration
 
-`.standards.yml` stays the entry file. It stops carrying rules. It declares
-knowledge sources and maps their folders to levels:
+The entry file remains `.standards.yml`. The configuration version remains
+`2` because version 2 is not yet released.
+
+### Complete example
 
 ```yaml
 version: 2
+
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
+  - path: knowledge
+    folders:
+      architecture: MUST
+      engineering-guides:
         level: SHOULD
-  - git:
-      repository: https://github.com/example/engineering-knowledge
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+        documents:
+          exclude:
+            - templates/**
+        applies_to:
+          include:
+            - src/**
+
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 ```
 
-A source is:
+### Top-level fields
 
-- a local directory that contains an OKF bundle, or
-- a Git repository (`repository`, optional `ref`, optional `path`) that
-  contains an OKF bundle. `ref` is a branch name. When absent, the loader
-  uses the repository's default branch.
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `version` | integer `2` | Yes | Configuration syntax version. |
+| `sources` | array | No | Knowledge sources. The default is an empty array. |
 
-Each source lists one or more `rules` entries. A `folder` is a bundle-relative
-directory. Discovery is recursive: every markdown document under the folder is
-a rule, at any depth. A bundle can nest documents freely, for example
-`guides/llm/`, `guides/clickhouse/`, `guides/tidb/schema-design.md`. `index.md`
-files are navigation, not rules, and are skipped at every depth. A folder that
-is not listed is not read. Enforcement is opt-in per folder.
+The configuration MUST NOT contain top-level `name` or `description` fields.
+No implemented behavior uses them.
 
-A `folder` can be a nested directory, for example `guides/clickhouse`. Two
-`rules` entries of the same source must not overlap: a folder that contains
-another mapped folder is a configuration error. This keeps one unambiguous
-level per document.
+### Local source
 
-The syntax change is breaking, so the document `version` becomes `2`.
+A local source has this form:
 
-### Freshness
+```yaml
+- path: knowledge
+  folders:
+    architecture: MUST
+```
 
-Knowledge follows the branch. Standards does not pin sources. At the start of
-a run, the loader resolves each `ref` to its current commit with
-`git ls-remote`, then fetches through the existing commit-keyed cache. A
-review always judges the change against the most recent accepted knowledge.
+`path` is relative to the repository root. It identifies the root of the OKF
+bundle.
 
-`.standards.lock` is removed. The pin existed for reproducible rule sets, but
-a review is model-judged and is not reproducible in that sense. For
-traceability, the report and the check run record the resolved commit of each
-Git source. The gate against a bad knowledge change is the knowledge
-repository's own review process, not a pin.
+### Git source
 
-`repository` accepts two URL forms:
+A Git source has this form:
 
-- HTTPS, for example `https://github.com/example/engineering-knowledge`.
-  Credentials in the URL are rejected. Authentication comes from the
-  environment, for example the action's token.
-- SSH, in `ssh://` or scp form, for example
-  `git@github.com:example/engineering-knowledge.git`. Authentication comes
-  from the user's SSH configuration. This form fits local CLI use against
-  private repositories.
+```yaml
+- repository: https://github.com/acme/shared-knowledge.git
+  branch: main
+  path: knowledge
+  id_prefix: shared
+  folders:
+    reliability: MUST
+```
 
-## Knowledge document format
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `repository` | HTTPS or SSH repository URL | Yes | Git repository that contains the bundle. |
+| `branch` | Git branch name | No | Branch to follow. The default is the remote default branch. |
+| `path` | relative path | No | Bundle root inside the Git repository. The default is the repository root. |
+| `id_prefix` | rule id prefix | No | Prefix added to every derived rule id from this source. |
+| `folders` | folder mapping object | Yes | Folders that Standards enforces. |
 
-### Frontmatter fields that Standards reads
+The configuration uses `branch`, not `ref`, because Standards accepts only a
+branch. The Git fields are not nested under a `git` field.
 
-Standards does not control the bundles it reads, and OKF tooling validates
-very little. The loader therefore defines a default for every absent field
-and a safe behavior for every invalid one. A bad document must never break a
-review.
+### Rule id prefix
 
-| Field | Default when absent | Use |
+`id_prefix` solves identity conflicts between independent knowledge sources.
+It MUST match the rule id grammar without a final dot.
+
+For this source:
+
+```yaml
+id_prefix: platform
+folders:
+  practices: SHOULD
+```
+
+the document `practices/api/pagination.md` has the rule id
+`platform.api.pagination`.
+
+When `id_prefix` is absent, the derived id does not change. A duplicate-id
+diagnostic SHOULD tell the user that `id_prefix` can resolve a conflict.
+
+### Folder mappings
+
+The short form maps a folder directly to a requirement level:
+
+```yaml
+folders:
+  architecture: MUST
+  engineering-guides: SHOULD
+```
+
+The expanded form adds document and target file filters:
+
+```yaml
+folders:
+  engineering-guides:
+    level: SHOULD
+    documents:
+      include:
+        - active/**/*.md
+      exclude:
+        - templates/**
+    applies_to:
+      include:
+        - src/**
+      exclude:
+        - src/generated/**
+```
+
+The short form is equivalent to an expanded form that contains only `level`.
+
+Two mapped folders in the same source MUST NOT overlap. A mapped folder MUST
+exist and remain inside its knowledge source.
+
+### Knowledge document filter
+
+`documents` filters knowledge documents relative to the mapped folder.
+
+| Field | Default | Meaning |
 | --- | --- | --- |
-| `title` | The file name slug. | The rule statement shown to the model and in reports. |
-| `description` | Empty. | A one-line summary shown in reports. |
-| `status` | `stable` (the OKF default), so the document is enforced. | Lifecycle filter. Only `stable` documents are enforced. |
-| `adr_status` | No constraint. | Lifecycle filter. When present, only `accepted` is enforced. |
-| `superseded_by` | None. | Identity alias chain (see Rule identity). |
-| `applies_to` | Every file. | The `include`/`exclude` glob filter, same shape and grammar as today. |
-| `type`, `tags` | Empty. | Reported, not used for selection or level. |
+| `include` | `**/*.md` | Documents that can become rules. |
+| `exclude` | empty | Documents that cannot become rules. Exclusion wins. |
 
-All other OKF fields (`generated`, `verified`, `stale_after`, `sources`) and
-unknown fields are accepted and ignored.
+Standards MUST NOT give `index.md` or any other file name a special meaning.
+Every Markdown document is eligible unless the configuration excludes it.
 
-`applies_to` is not an OKF field. Standards defines it as an extension.
-OKF tooling ignores unknown frontmatter keys, so the field is additive and
-safe. Bundle authors add it to the documents that need a narrower scope.
+This filter is consumer policy. It lets a user consume an OKF bundle that
+mixes enforceable and informational documents in one folder. The bundle does
+not need a Standards-specific layout.
 
-### Invalid documents
+### Target repository applicability
 
-A field that is present but invalid is not defaulted. The loader skips the
-whole document and reports a warning that names the document and the problem.
-Warnings appear in the report and in the check run, so the bundle gets fixed.
-Cases:
+The folder mapping `applies_to` filter scopes every rule in that folder to
+target repository files. Its globs are relative to the target repository root.
 
-- no frontmatter block, or frontmatter that is not valid YAML,
-- a frontmatter value with a wrong type (for example `title` as a list),
-- an unknown `status` or `adr_status` value,
-- a malformed `applies_to` (wrong shape or invalid glob),
-- a `superseded_by` chain that points to a missing document or forms a cycle,
-- a derived `id` that does not match the id grammar.
+A knowledge document can also contain the existing `applies_to` frontmatter
+extension. When both filters exist, both MUST match. Exclusion in either filter
+wins.
 
-A skipped document never fails the run. Sources follow a branch, so a single
-bad commit in a shared bundle must not block every review that consumes it.
-Silence is the failure mode to avoid, not the run.
+The folder filter lets a consumer apply a shared bundle to its own repository
+layout. The shared bundle does not need to know that layout.
 
-Configuration mistakes are different: the consumer authors `.standards.yml`,
-so a mapped `folder` that does not exist in the bundle, or an unreachable
-source, is an error that fails the run, as today.
+## Interactive initialization
 
-### Body
+`standards init` MUST use an interactive dialogue when standard input and
+standard output are terminals.
 
-The body is the rationale. Standards sends the full markdown body to the model
-with the rule statement. Standards does not parse body sections.
+### Dialogue
 
-## Rule identity
+The dialogue MUST:
 
-The rule `id` derives from the document path relative to its mapped folder:
-remove the `.md` extension and replace `/` with `.`. Examples, with
-`folder: guides` and `folder: decisions` mapped:
+1. Ask whether the knowledge source is local or Git.
+2. Ask for the local bundle root, or the Git repository, branch, and optional
+   bundle path.
+3. Scan the source and show folders that contain Markdown documents.
+4. Let the user select one or more folders.
+5. Ask for the `MUST` or `SHOULD` level of each selected folder.
+6. Let the user configure document exclusions when a selected folder contains
+   documents that must not become rules.
+7. Let the user set a target repository `applies_to` filter when needed.
+8. Ask for an optional `id_prefix`.
+9. Let the user add another knowledge source.
+10. Show the complete `.standards.yml` preview.
+11. Ask for confirmation before it writes the file.
 
-- `guides/llm/prompt-caching.md` → `llm.prompt-caching`
-- `guides/tidb/schema-design.md` → `tidb.schema-design`
-- `decisions/2026-08-25-llm-calls-use-llm-service.md` →
-  `2026-08-25-llm-calls-use-llm-service`
+The dialogue MUST NOT propose semantic folder names. It can show existing
+folder names and document counts.
 
-The mapped folder is not part of the `id`. A bundle can rename its top-level
-folders without a change of rule identities; only the configuration mapping
-changes. Derived ids keep the version 1 rule `id` grammar
-(`^[a-z0-9]+(?:[._-][a-z0-9]+)*$`), so suppression markers and finding
-fingerprints keep their existing shape. A document whose derived id does not
-match the grammar is skipped with a warning (see Invalid documents).
+For a Git source, the dialogue can use the normal source cache to scan the
+selected branch. If the source cannot be scanned, the user can enter folder
+paths manually.
 
-Two documents can derive the same `id` from different mapped folders. The
-existing duplicate-identity error catches this.
+Cancellation MUST leave the repository unchanged. If `.standards.yml` already
+exists, `init` MUST refuse to replace it.
 
-Standards expects bundles to supersede enforced documents instead of editing
-them, so the identity is stable in practice. A content change creates a new
-document and a new identity.
+### Non-interactive use
 
-When the loader meets a document with `superseded_by`, it follows the chain to
-the newest document and enforces only that one. The derived ids of the
-superseded documents become aliases of the final rule. A suppression marker that names an
-alias suppresses the final rule.
+Without a terminal, `standards init` MUST NOT write an empty or assumed
+configuration. It MUST report that interactive input is required and leave the
+repository unchanged.
 
-Duplicate identities across sources are an error, as today.
+Command options for non-interactive initialization are deferred until a real
+automation use case defines them.
 
-## Requirement levels
+### Completion output
 
-The configuration sets the level per folder. Two values exist:
+After it writes the configuration, `init` MUST tell the user to run
+`standards validate`. It MUST NOT create knowledge folders or documents unless
+the user explicitly selected a future create-folder operation. That operation
+is not part of this change.
 
-- `MUST` → blocking. Equivalent to `MUST` / `MUST NOT`.
-- `SHOULD` → advisory. Equivalent to `SHOULD` / `SHOULD NOT`.
+## Rule document parsing
 
-Polarity (required against prohibited) lives in the prose of the rule
-statement. The pipeline only needs the blocking / advisory distinction, which
-is what reporting uses today. The `MAY` level disappears; the pipeline already
-discards `MAY` rules before evaluation, so no behavior is lost.
+The parser continues to read the rule statement, optional summary, lifecycle
+fields, target applicability, and Markdown body.
 
-## Lifecycle
+The runtime rule MUST contain only fields used by selection, review, or
+reporting:
 
-The loader enforces a document only when:
+```ts
+interface Rule {
+  id: string;
+  level: RequirementLevel;
+  title: string;
+  description?: string;
+  body: string;
+  applies_to?: AppliesTo;
+}
+```
 
-- `status` is `stable`, and
-- `adr_status`, when present, is `accepted`.
+The runtime rule MUST NOT contain `type`, `tags`, or `aliases`. Standards MUST
+accept and ignore unused OKF frontmatter fields. It MUST NOT reject a document
+because an unused field has a shape that Standards does not consume.
 
-The loader skips `draft` documents. The loader skips `deprecated` documents,
-except to follow their `superseded_by` chain.
+An absent description stays absent. The loader MUST NOT convert it to an empty
+string and later convert it back to an absent value.
 
-## Rule selection
+## Superseded documents
 
-Selection keeps the current logic. `applies_to` compiles to the same
-include/exclude glob matcher, with the same defaults: include `**/*`, exclude
-nothing, exclusion wins.
+Suppressions are not implemented. No current behavior reads rule aliases.
 
-## Prompt rendering
+For this change:
 
-The evaluation and verification prompts render one rule as:
+- a document with `superseded_by` does not become a rule,
+- the final document is discovered and enforced through its own path,
+- the loader does not build aliases,
+- the loader does not follow alias chains,
+- the loader does not validate alias cycles or missing alias targets.
 
-- the rule identity,
-- the level,
-- the rule statement (`title`) and `description`,
-- the full markdown body.
+Alias chain validation and alias-based suppression MUST be implemented with
+suppressions, not before them.
 
-`references` URLs in the body are reported, not fetched, as today.
+## Resolution interface
 
-## Guidance
+The loader MUST return one value named `Resolution`:
 
-The `guidance` rule field is removed. The model produces remediation advice
-per finding instead. The evaluation output schema gains an optional
-`suggestion` field on each finding. Verification carries it through. The
-report renders it where the authored `guidance` rendered before. Advice
-becomes specific to the change instead of generic per rule.
+```ts
+interface Resolution {
+  rules: Rule[];
+  gitSources: ResolvedGitSource[];
+  warnings: RuleWarning[];
+}
+```
 
-`rationale` as a field is removed. The body replaces it.
+`runReview` MUST accept the resolution as one input. Callers MUST NOT unpack it
+into separate `ruleSet`, `gitSources`, and `warnings` arguments and then pass
+the same fields through each review layer.
 
-## Removals
+Review steps that need only rules can read `resolution.rules`. Report building
+can read source and warning metadata from the same resolution.
 
-- The `rules` list and the rule schema in `.standards.yml`.
-- The `.standards.lock` file, the `standards lock` command, and the lockfile
-  modules (schema, loader, updater).
-- The published JSON Schemas in `schemas/v1/`, their generation script, the
-  schema drift tests, and the `standards schema` command. OKF is the format
-  authority for rule documents. A small internal schema remains for the
-  configuration and for frontmatter validation errors.
-- The `standards init` rule prompt. `init` writes a minimal source
-  configuration instead.
+## Source lookup keys
 
-## Change surface
+Source and checkout caches MUST NOT put literal NUL characters in TypeScript
+source files. Literal NUL characters make plain-text search tools treat the
+file as binary.
 
-In `packages/standards`:
+Tuple keys can use `JSON.stringify([first, second])` or another searchable
+text representation. The chosen representation MUST not introduce ambiguous
+keys.
 
-- The configuration schema becomes sources with folder-to-level mappings
-  (`version: 2`).
-- New loader beside `config/` that walks the mapped folders and parses
-  frontmatter documents into rules.
-- `formatRule` in the evaluation and verification steps sends the body.
-- The evaluation tool schema gains `suggestion`; the report reads it from the
-  finding instead of the rule.
-- The report and the check run gain the resolved commit of each Git source
-  and the warnings for skipped documents.
-- Removal of the schema tooling listed above.
-- Spec updates: `specs/configuration.md` (rewrite), `specs/cli.md`,
-  `specs/suppressions.md`, `specs/testing.md`, and `TERMINOLOGY.md`.
+## Validation output
 
-On the knowledge side, a bundle needs no change to become a source. Bundle
-authors add `applies_to` only to the documents that need a narrower scope
-than every file.
+`standards validate` MUST show:
 
-The review pipeline (`selectRules`, `planEvaluationTasks`, evaluation,
-verification, report structure) and the source cache do not change.
+- the configuration path,
+- each knowledge source,
+- each mapped folder and its level,
+- each discovered rule with document path and derived id,
+- resolved Git commits,
+- skipped document warnings,
+- total rule counts by level.
 
-## Open points
+This output lets the user confirm the interactive choices before a review.
 
-1. **Enforcement opt-out per document.** Folder mapping makes enforcement
-   opt-in per folder, which removes most noise. Inside an enforced folder,
-   some documents can still be knowledge-only and not code-checkable.
-   Proposed escape hatch: an `enforcement: none` frontmatter field (or a
-   reserved tag) that excludes one document. Not decided.
-2. **In-place edits.** OKF does not forbid editing a document in place, so a
-   rule's content can change under a stable identity. Standards accepts this
-   for advisory folders; noted as a known limit.
-3. **Rule statement field.** Document titles are descriptive, not always
-   directive. Start with `title` plus body. Add an optional one-line `rule`
-   frontmatter field later only if evaluation quality demands it.
+## Deferred configuration options
+
+Do not add these options in this change:
+
+- source display name or description,
+- enabled or disabled state,
+- source or rule priority,
+- authentication fields,
+- cache fields,
+- model selection,
+- strict warning policy,
+- Git tag or commit selection.
+
+Add an option only when a proven user workflow needs it.
+
+## Implementation sequence
+
+1. Replace the configuration schema and examples with the new source and
+   folder mapping shape.
+2. Rename `ref` to `branch` in code, reports, diagnostics, specifications, and
+   terminology.
+3. Implement `id_prefix`, document filters, and folder-level `applies_to`.
+4. Remove the hard-coded `index.md` exclusion.
+5. Replace `standards init` with the interactive dialogue.
+6. Reduce the runtime `Rule` type and remove unused frontmatter validation.
+7. Remove alias collection and chain traversal.
+8. Introduce `Resolution` and pass it through the review pipeline.
+9. Replace literal NUL cache keys.
+10. Update CLI help, canonical specifications, README examples, and
+    `TERMINOLOGY.md`.
+11. Rebuild the action bundle.
+
+## Tests
+
+Tests MUST cover:
+
+- short and expanded folder mappings,
+- local and Git source syntax,
+- default branch and selected branch resolution,
+- optional `id_prefix` and duplicate-id diagnostics,
+- document include and exclude filters,
+- `index.md` discovery when it is not excluded,
+- folder-level and document-level applicability intersection,
+- interactive local source setup,
+- interactive Git source setup,
+- manual folder entry when scanning fails,
+- multiple sources,
+- preview confirmation and cancellation,
+- refusal to replace an existing entry file,
+- non-interactive refusal without explicit options,
+- the reduced runtime rule fields,
+- superseded document exclusion without alias resolution,
+- one resolution value passed into review,
+- searchable source lookup keys.
+
+Git test repositories MUST disable commit signing in their local configuration.
+Tests must not depend on the user's global Git configuration.
+
+## Acceptance criteria
+
+The implementation is complete when:
+
+- the configuration accepts the syntax in this specification,
+- initialization does not assume an OKF folder layout,
+- a user can preview and create a configuration through the dialogue,
+- validation shows exactly which documents became rules,
+- the review receives one resolution value,
+- runtime rules contain no unused OKF metadata or aliases,
+- source files contain no literal NUL characters,
+- canonical docs and terminology agree with the implementation,
+- focused tests, the full test suite, type checking, and formatting checks pass.

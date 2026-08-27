@@ -2,8 +2,6 @@
 version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
-        level: SHOULD
+    folders:
+      decisions: MUST
+      practices: SHOULD

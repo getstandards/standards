@@ -24,13 +24,11 @@ export const adrStatuses = [
  */
 const frontmatterSchema = z.object({
 	title: z.string().optional(),
-	description: z.string().default(""),
+	description: z.string().optional(),
 	status: z.enum(documentStatuses).default("stable"),
 	adr_status: z.enum(adrStatuses).optional(),
 	superseded_by: z.string().min(1).optional(),
 	applies_to: appliesToSchema.optional(),
-	type: z.string().optional(),
-	tags: z.array(z.string()).default([]),
 });
 
 /** The validated frontmatter of one knowledge document. */

@@ -38,11 +38,9 @@ async function createLocalConsumer(
 	configuration = `version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
-        level: SHOULD
+    folders:
+      decisions: MUST
+      practices: SHOULD
 `,
 ): Promise<string> {
 	const repositoryRoot = await createTemporaryDirectory();
@@ -114,6 +112,7 @@ async function createGitKnowledgeRepository(
 	runGit(repositoryRoot, ["init", "--initial-branch=main"]);
 	runGit(repositoryRoot, ["config", "user.name", "Standards Test"]);
 	runGit(repositoryRoot, ["config", "user.email", "standards@example.com"]);
+	runGit(repositoryRoot, ["config", "commit.gpgsign", "false"]);
 	for (const [relativePath, content] of Object.entries(documents)) {
 		await writeRepositoryFile(repositoryRoot, relativePath, content);
 	}
@@ -145,8 +144,6 @@ describe("loadRules", () => {
 				"LLM calls go through the LLM service",
 			),
 			"practices/llm/prompt-caching.md": document("Use prompt caching"),
-			"practices/index.md": "# Practices\n",
-			"practices/llm/index.md": "# LLM\n",
 		});
 
 		const { rules, gitSources, warnings } = await loadRules(repositoryRoot);
@@ -171,6 +168,37 @@ describe("loadRules", () => {
 		assert.equal(rules[1]?.body, "Body of Use prompt caching.");
 	});
 
+	it("carries only the reduced runtime rule fields", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/plain.md": document("Plain"),
+		});
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(Object.keys(rules[0] ?? {}).sort(), [
+			"body",
+			"id",
+			"level",
+			"title",
+		]);
+	});
+
+	it("keeps an absent description absent", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/plain.md": document("Plain"),
+			"decisions/summarized.md": document(
+				"Summarized",
+				"description: One line.\n",
+			),
+		});
+
+		const { rules } = await loadRules(repositoryRoot);
+		const byId = new Map(rules.map((rule) => [rule.id, rule]));
+
+		assert.equal(Object.hasOwn(byId.get("plain") ?? {}, "description"), false);
+		assert.equal(byId.get("summarized")?.description, "One line.");
+	});
+
 	it("defaults the title to the file name slug", async () => {
 		const repositoryRoot = await createLocalConsumer({
 			"decisions/no-float-money.md": "---\n---\nNo floats.\n",
@@ -179,6 +207,94 @@ describe("loadRules", () => {
 		const { rules } = await loadRules(repositoryRoot);
 
 		assert.equal(rules[0]?.title, "no-float-money");
+	});
+
+	it("discovers index.md when the configuration does not exclude it", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/index.md": document("Index rule"),
+			"practices/llm/index.md": document("LLM index"),
+		});
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(rules.map(({ id }) => id).sort(), ["index", "llm.index"]);
+	});
+
+	it("applies document include and exclude filters", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"guides/active/keep.md": document("Keep"),
+				"guides/templates/skip.md": document("Skip"),
+				"guides/draft-notes.txt": "not markdown",
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    folders:
+      guides:
+        level: SHOULD
+        documents:
+          include:
+            - active/**/*.md
+          exclude:
+            - "**/skip.md"
+`,
+		);
+
+		const { rules, warnings } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(warnings, []);
+		assert.deepEqual(
+			rules.map(({ id }) => id),
+			["active.keep"],
+		);
+	});
+
+	it("intersects folder-level and document-level applicability", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"decisions/scoped.md": document(
+					"Scoped",
+					"applies_to:\n  exclude:\n    - src/**/*.test.ts\n",
+				),
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    folders:
+      decisions:
+        level: MUST
+        applies_to:
+          include:
+            - src/**
+`,
+		);
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(rules[0]?.applies_to, {
+			include: ["src/**"],
+			exclude: ["src/**/*.test.ts"],
+		});
+	});
+
+	it("adds the id prefix to every derived id", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"practices/api/pagination.md": document("Pagination"),
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    id_prefix: platform
+    folders:
+      practices: SHOULD
+`,
+		);
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.equal(rules[0]?.id, "platform.api.pagination");
 	});
 
 	it("enforces only stable, accepted documents", async () => {
@@ -227,58 +343,29 @@ describe("loadRules", () => {
 		const { rules, warnings } = await loadRules(repositoryRoot);
 
 		assert.deepEqual(rules, []);
-		assert.match(
-			String(warnings[0]?.problem),
-			/Derived id 'bad_name'|does not match/i,
-		);
+		assert.match(String(warnings[0]?.problem), /does not match/i);
 	});
 
-	it("follows superseded_by chains and aliases the final rule", async () => {
+	it("does not enforce a superseded document and needs no alias resolution", async () => {
 		const repositoryRoot = await createLocalConsumer({
-			"decisions/2026-01-01-first.md": document(
-				"First",
-				"status: deprecated\nsuperseded_by: 2026-02-01-second.md\n",
+			"decisions/old.md": document(
+				"Old",
+				"status: deprecated\nsuperseded_by: new.md\n",
 			),
-			"decisions/2026-02-01-second.md": document(
-				"Second",
-				"superseded_by: 2026-03-01-third.md\n",
+			"decisions/new.md": document("New"),
+			"decisions/dangling.md": document(
+				"Dangling",
+				"superseded_by: missing.md\n",
 			),
-			"decisions/2026-03-01-third.md": document("Third"),
 		});
 
 		const { rules, warnings } = await loadRules(repositoryRoot);
 
 		assert.deepEqual(warnings, []);
-		assert.equal(rules.length, 1);
-		assert.equal(rules[0]?.id, "2026-03-01-third");
-		assert.deepEqual(rules[0]?.aliases, [
-			"2026-01-01-first",
-			"2026-02-01-second",
-		]);
-	});
-
-	it("warns about a superseded_by chain that points to a missing document", async () => {
-		const repositoryRoot = await createLocalConsumer({
-			"decisions/old.md": document("Old", "superseded_by: missing.md\n"),
-		});
-
-		const { rules, warnings } = await loadRules(repositoryRoot);
-
-		assert.deepEqual(rules, []);
-		assert.match(String(warnings[0]?.problem), /missing\.md/);
-	});
-
-	it("warns about a superseded_by cycle", async () => {
-		const repositoryRoot = await createLocalConsumer({
-			"decisions/a.md": document("A", "superseded_by: b.md\n"),
-			"decisions/b.md": document("B", "superseded_by: a.md\n"),
-		});
-
-		const { rules, warnings } = await loadRules(repositoryRoot);
-
-		assert.deepEqual(rules, []);
-		assert.equal(warnings.length, 2);
-		assert.match(String(warnings[0]?.problem), /cycle/);
+		assert.deepEqual(
+			rules.map(({ id }) => id),
+			["new"],
+		);
 	});
 
 	it("fails when a mapped folder does not exist in the bundle", async () => {
@@ -311,9 +398,8 @@ describe("loadRules", () => {
 			`version: 2
 sources:
   - path: ../outside
-    rules:
-      - folder: decisions
-        level: MUST
+    folders:
+      decisions: MUST
 `,
 		);
 
@@ -322,7 +408,7 @@ sources:
 		);
 	});
 
-	it("rejects duplicate identities across sources", async () => {
+	it("rejects duplicate identities and names id_prefix as the fix", async () => {
 		const repositoryRoot = await createLocalConsumer(
 			{
 				"decisions/shared.md": document("First"),
@@ -331,19 +417,43 @@ sources:
 			`version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
+    folders:
+      decisions: MUST
   - path: ./knowledge/more
-    rules:
-      - folder: decisions
-        level: SHOULD
+    folders:
+      decisions: SHOULD
 `,
 		);
 
 		await expect(loadRules(repositoryRoot)).rejects.toThrow(
-			/Rule ID 'shared' in 'knowledge\/more' duplicates the rule from 'knowledge'/,
+			/Rule ID 'shared' in 'knowledge\/more' duplicates the rule from 'knowledge'.*id_prefix/s,
 		);
+	});
+
+	it("resolves a duplicate identity through id_prefix", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"decisions/shared.md": document("First"),
+				"more/decisions/shared.md": document("Second"),
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    folders:
+      decisions: MUST
+  - path: ./knowledge/more
+    id_prefix: more
+    folders:
+      decisions: SHOULD
+`,
+		);
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(rules.map(({ id }) => id).sort(), [
+			"more.shared",
+			"shared",
+		]);
 	});
 
 	it("resolves a Git source branch to its current commit", async () => {
@@ -358,12 +468,10 @@ sources:
 			".standards.yml",
 			`version: 2
 sources:
-  - git:
-      repository: ${repository}
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${repository}
+    branch: main
+    folders:
+      decisions: MUST
 `,
 		);
 
@@ -371,7 +479,7 @@ sources:
 
 		assert.deepEqual(warnings, []);
 		assert.deepEqual(gitSources, [
-			{ repository, ref: "main", commit: gitSource.commit },
+			{ repository, branch: "main", commit: gitSource.commit },
 		]);
 		assert.deepEqual(
 			rules.map(({ id, level }) => ({ id, level })),
@@ -379,7 +487,7 @@ sources:
 		);
 	});
 
-	it("resolves the default branch when a Git source has no ref", async () => {
+	it("resolves the default branch when a Git source has no branch", async () => {
 		const gitSource = await createGitKnowledgeRepository({
 			"decisions/git-rule.md": document("Git rule"),
 		});
@@ -391,18 +499,16 @@ sources:
 			".standards.yml",
 			`version: 2
 sources:
-  - git:
-      repository: ${repository}
-    rules:
-      - folder: decisions
-        level: SHOULD
+  - repository: ${repository}
+    folders:
+      decisions: SHOULD
 `,
 		);
 
 		const { rules, gitSources } = await loadRules(repositoryRoot);
 
 		assert.deepEqual(gitSources, [
-			{ repository, ref: "main", commit: gitSource.commit },
+			{ repository, branch: "main", commit: gitSource.commit },
 		]);
 		assert.equal(rules[0]?.level, "SHOULD");
 	});
@@ -419,12 +525,10 @@ sources:
 			".standards.yml",
 			`version: 2
 sources:
-  - git:
-      repository: ${repository}
-      ref: missing
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${repository}
+    branch: missing
+    folders:
+      decisions: MUST
 `,
 		);
 

@@ -95,12 +95,10 @@ async function createConsumerRepository(repository: string): Promise<string> {
 		path.join(repositoryRoot, ".standards.yml"),
 		`version: 2
 sources:
-  - git:
-      repository: ${repository}
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${repository}
+    branch: main
+    folders:
+      decisions: MUST
 `,
 	);
 	return repositoryRoot;
@@ -232,7 +230,7 @@ describe("openGitSourceCache", () => {
 
 		expect(secondResult.rules.map(({ id }) => id)).toEqual(["git-rule"]);
 		expect(secondResult.gitSources).toEqual([
-			{ repository, ref: "main", commit: gitSource.commit },
+			{ repository, branch: "main", commit: gitSource.commit },
 		]);
 		expect(secondRun.cacheHits).toEqual([gitSource.commit]);
 		expect(secondRun.fetches).toEqual([]);

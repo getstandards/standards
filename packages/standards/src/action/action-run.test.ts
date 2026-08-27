@@ -43,9 +43,8 @@ async function createReviewRepository(): Promise<{
 		`version: 2
 sources:
   - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
+    folders:
+      decisions: MUST
 `,
 	);
 	// The document at decisions/money/no-float.md derives the id money.no-float.

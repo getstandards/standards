@@ -6,19 +6,17 @@ import type {
 /**
  * One rule resolved from a knowledge document (specs/configuration.md).
  *
- * `title` is the rule statement, `description` a one-line summary, and `body`
- * the full markdown body that carries the rationale. `aliases` holds the
- * derived ids of superseded documents; a suppression marker that names an
- * alias suppresses this rule.
+ * `title` is the rule statement, `description` an optional one-line summary,
+ * and `body` the full markdown body that carries the rationale. `applies_to`
+ * is the combined target file filter from the folder mapping and the document
+ * frontmatter. The rule carries only the fields that selection, review, or
+ * reporting use.
  */
 export interface Rule {
 	id: string;
 	level: RequirementLevel;
 	title: string;
-	description: string;
+	description?: string;
 	body: string;
 	applies_to?: AppliesTo;
-	type?: string;
-	tags: string[];
-	aliases: string[];
 }

@@ -1,6 +1,5 @@
 import type { Api, Model, ModelCost, Models } from "@earendil-works/pi-ai";
-import type { Rule } from "../rules/rule.js";
-import type { ResolvedGitSource, RuleWarning } from "../rules/rules-loader.js";
+import type { Resolution } from "../rules/rules-loader.js";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { emptyStepUsage } from "./agent-usage.js";
 import { computeChange } from "./change-diff.js";
@@ -36,12 +35,8 @@ export interface RunReviewInput {
 	workingDirectory: string;
 	/** Repository-relative paths that limit the review. Empty means the whole change. */
 	targets?: readonly string[];
-	/** The ordered rule set produced by resolution. */
-	ruleSet: readonly Rule[];
-	/** The resolved commit of each Git knowledge source, for the report. */
-	gitSources?: readonly ResolvedGitSource[];
-	/** The knowledge documents the loader skipped, for the report. */
-	warnings?: readonly RuleWarning[];
+	/** The resolution: the ordered rules, resolved Git commits, and warnings. */
+	resolution: Resolution;
 	/** The SDK model collection that runs the agent steps. */
 	models: Models;
 	/** Model references from the `standards review` options, when given. */
@@ -111,7 +106,8 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			reportVerbose(`Targets: ${targets.join(", ")}`);
 		}
 	}
-	const selections = selectRules(input.ruleSet, changedFiles);
+	const ruleSet = input.resolution.rules;
+	const selections = selectRules(ruleSet, changedFiles);
 	if (reportVerbose !== undefined) {
 		for (const selection of selections) {
 			const ruleIds = selection.rules.map((rule) => rule.id).join(", ");
@@ -125,7 +121,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		selections.flatMap((selection) => selection.rules.map((rule) => rule.id)),
 	);
 	const baseCounts: Pick<ReviewCounts, "resolved_rules" | "selected_rules"> = {
-		resolved_rules: input.ruleSet.length,
+		resolved_rules: ruleSet.length,
 		selected_rules: selectedRuleIds.size,
 	};
 
@@ -139,9 +135,9 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			},
 			costBasis,
 			confirmedFindings: [],
-			ruleSet: input.ruleSet,
-			sources: input.gitSources,
-			warnings: input.warnings,
+			ruleSet,
+			sources: input.resolution.gitSources,
+			warnings: input.resolution.warnings,
 		});
 	}
 
@@ -179,7 +175,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		models: input.models,
 		model: verificationModel,
 		findings: evaluation.findings,
-		ruleSet: input.ruleSet,
+		ruleSet,
 		headCheckoutDir: input.workingDirectory,
 		reportVerbose: input.reportVerbose,
 		reportStepProgress: input.reportStepProgress,
@@ -195,9 +191,9 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		},
 		costBasis,
 		confirmedFindings: verification.findings,
-		ruleSet: input.ruleSet,
-		sources: input.gitSources,
-		warnings: input.warnings,
+		ruleSet,
+		sources: input.resolution.gitSources,
+		warnings: input.resolution.warnings,
 	});
 }
 

@@ -33,8 +33,6 @@ const rule: Rule = {
 	title: "Money must not be a floating-point number.",
 	description: "",
 	body: "Floating-point money loses cents.",
-	tags: [],
-	aliases: [],
 };
 
 function finding(overrides: Partial<Finding>): Finding {

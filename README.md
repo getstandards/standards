@@ -25,12 +25,10 @@ A rule is a knowledge document: a markdown file with YAML frontmatter, in the Op
 ```yaml
 version: 2
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
-        level: SHOULD
+  - path: knowledge
+    folders:
+      decisions: MUST
+      practices: SHOULD
 ```
 
 A document like `knowledge/practices/api/paginate-unbounded-collections.md`:

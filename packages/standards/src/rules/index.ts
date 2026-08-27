@@ -7,8 +7,8 @@ export {
 } from "./rule-document.js";
 export type {
 	LoadRulesOptions,
+	Resolution,
 	ResolvedGitSource,
-	RuleLoadResult,
 	RuleWarning,
 } from "./rules-loader.js";
 export {

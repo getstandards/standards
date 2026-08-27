@@ -447,7 +447,7 @@ function knowledgeSourcesList(report: ReviewReport): string[] {
 		"Knowledge sources:",
 		...report.sources.map(
 			(source) =>
-				`- \`${source.repository}\` at \`${source.ref}\`: \`${source.commit}\``,
+				`- \`${source.repository}\` at \`${source.branch}\`: \`${source.commit}\``,
 		),
 	];
 }

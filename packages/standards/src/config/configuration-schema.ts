@@ -240,7 +240,7 @@ const globSchema = z
 	.string()
 	.refine(
 		isValidVersionOneGlob,
-		"Expected a repository-relative glob that uses version 1 syntax.",
+		"Invalid glob. Use '/' separators and '**' only as a whole path segment, for example 'dir/**/*.md'.",
 	);
 
 /** The `include`/`exclude` glob filter that scopes a rule to files. */
@@ -253,6 +253,32 @@ export const appliesToSchema = z
 
 /** A validated `applies_to` filter. */
 export type AppliesTo = z.infer<typeof appliesToSchema>;
+
+/**
+ * The `include`/`exclude` glob filter that selects knowledge documents inside a
+ * mapped folder. Its globs are relative to the mapped folder
+ * (specs/configuration.md).
+ */
+export const documentFilterSchema = z
+	.object({
+		include: z.array(globSchema).min(1).optional(),
+		exclude: z.array(globSchema).min(1).optional(),
+	})
+	.strict();
+
+/** A validated knowledge document filter. */
+export type DocumentFilter = z.infer<typeof documentFilterSchema>;
+
+/**
+ * A rule id prefix added to every derived id of a source. It matches the rule
+ * id grammar without a final dot (specs/configuration.md).
+ */
+export const idPrefixSchema = z
+	.string()
+	.regex(
+		RULE_ID_PATTERN,
+		"Expected an id prefix that matches the rule id grammar.",
+	);
 
 /** A bundle-relative folder path with `/` separators and no `.` segments. */
 const folderSchema = relativePathSchema.refine(
@@ -267,43 +293,31 @@ const folderSchema = relativePathSchema.refine(
 	"Expected a bundle-relative folder path without '.' or '..' segments.",
 );
 
-/** One folder-to-level mapping of a knowledge source. */
-export const folderRuleSchema = z
+/** The expanded folder mapping form: a level with optional filters. */
+const expandedFolderMappingSchema = z
 	.object({
-		folder: folderSchema,
 		level: z.enum(requirementLevels),
+		documents: documentFilterSchema.optional(),
+		applies_to: appliesToSchema.optional(),
 	})
 	.strict();
 
-const folderRulesSchema = z
-	.array(folderRuleSchema)
-	.min(1, "Expected at least one folder-to-level mapping.");
-
-const localSourceSchema = z
-	.object({
-		path: relativePathSchema,
-		rules: folderRulesSchema,
-	})
-	.strict();
-
-const gitSourceSchema = z
-	.object({
-		git: z
-			.object({
-				repository: repositoryUrlSchema,
-				ref: branchNameSchema.optional(),
-				path: relativePathSchema.optional(),
-			})
-			.strict(),
-		rules: folderRulesSchema,
-	})
-	.strict();
-
-/** A local or Git knowledge source in the configuration `sources` list. */
-export const knowledgeSourceSchema = z.union([
-	localSourceSchema,
-	gitSourceSchema,
+/**
+ * One folder mapping value: a bare requirement level (short form) or a level
+ * with optional document and target file filters (expanded form).
+ */
+const folderMappingValueSchema = z.union([
+	z.enum(requirementLevels),
+	expandedFolderMappingSchema,
 ]);
+
+/** One normalized folder mapping of a knowledge source. */
+export interface FolderMapping {
+	folder: string;
+	level: RequirementLevel;
+	documents?: DocumentFilter;
+	applies_to?: AppliesTo;
+}
 
 /** Return true when one mapped folder contains or equals another. */
 function foldersOverlap(first: string, second: string): boolean {
@@ -314,32 +328,82 @@ function foldersOverlap(first: string, second: string): boolean {
 	);
 }
 
+/**
+ * The `folders` object of a source, mapping each folder to its level or
+ * expanded form. It normalizes to an ordered list of folder mappings and
+ * rejects an empty object or two overlapping folders.
+ */
+const foldersSchema = z
+	.record(folderSchema, folderMappingValueSchema)
+	.superRefine((folders, context) => {
+		const names = Object.keys(folders);
+		if (names.length === 0) {
+			context.addIssue({
+				code: "custom",
+				message: "Expected at least one folder mapping.",
+			});
+		}
+		for (const [index, name] of names.entries()) {
+			const overlap = names.find(
+				(other, otherIndex) =>
+					otherIndex < index && foldersOverlap(other, name),
+			);
+			if (overlap !== undefined) {
+				context.addIssue({
+					code: "custom",
+					path: [name],
+					message: `Folder '${name}' overlaps folder '${overlap}' of the same source.`,
+				});
+			}
+		}
+	})
+	.transform((folders): FolderMapping[] =>
+		Object.entries(folders).map(([folder, mapping]) => {
+			if (typeof mapping === "string") {
+				return { folder, level: mapping };
+			}
+			const normalized: FolderMapping = { folder, level: mapping.level };
+			if (mapping.documents !== undefined) {
+				normalized.documents = mapping.documents;
+			}
+			if (mapping.applies_to !== undefined) {
+				normalized.applies_to = mapping.applies_to;
+			}
+			return normalized;
+		}),
+	);
+
+const localSourceSchema = z
+	.object({
+		path: relativePathSchema,
+		id_prefix: idPrefixSchema.optional(),
+		folders: foldersSchema,
+	})
+	.strict();
+
+const gitSourceSchema = z
+	.object({
+		repository: repositoryUrlSchema,
+		branch: branchNameSchema.optional(),
+		path: relativePathSchema.optional(),
+		id_prefix: idPrefixSchema.optional(),
+		folders: foldersSchema,
+	})
+	.strict();
+
+/** A local or Git knowledge source in the configuration `sources` list. */
+export const knowledgeSourceSchema = z.union([
+	localSourceSchema,
+	gitSourceSchema,
+]);
+
 /** The validated shape of a version 2 Standards configuration document. */
 export const configurationSchema = z
 	.object({
 		version: z.literal(2),
-		name: z.string().optional(),
-		description: z.string().optional(),
 		sources: z.array(knowledgeSourceSchema).default([]),
 	})
-	.strict()
-	.superRefine((configuration, context) => {
-		for (const [sourceIndex, source] of configuration.sources.entries()) {
-			for (const [index, entry] of source.rules.entries()) {
-				const overlapIndex = source.rules.findIndex(
-					(other, otherIndex) =>
-						otherIndex < index && foldersOverlap(other.folder, entry.folder),
-				);
-				if (overlapIndex !== -1) {
-					context.addIssue({
-						code: "custom",
-						path: ["sources", sourceIndex, "rules", index, "folder"],
-						message: `Folder '${entry.folder}' overlaps rules[${overlapIndex}].folder of the same source.`,
-					});
-				}
-			}
-		}
-	});
+	.strict();
 
 /** A validated Standards configuration. */
 export type Configuration = z.infer<typeof configurationSchema>;
@@ -352,6 +416,3 @@ export type GitKnowledgeSource = z.infer<typeof gitSourceSchema>;
 
 /** A local source from a validated configuration `sources` list. */
 export type LocalKnowledgeSource = z.infer<typeof localSourceSchema>;
-
-/** One folder-to-level mapping from a validated knowledge source. */
-export type FolderRule = z.infer<typeof folderRuleSchema>;

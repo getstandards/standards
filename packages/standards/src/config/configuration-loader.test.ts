@@ -10,35 +10,46 @@ describe("loadConfiguration", () => {
 		const configuration = loadConfiguration(`
 ---
 version: 2
-name: payments-service
-description: Standards for the payments service.
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-      - folder: practices
+  - path: knowledge
+    folders:
+      architecture: MUST
+      engineering-guides:
         level: SHOULD
-  - git:
-      repository: https://github.com/example/engineering-knowledge
-      ref: main
-    rules:
-      - folder: decisions
-        level: MUST
+        documents:
+          exclude:
+            - templates/**
+        applies_to:
+          include:
+            - src/**
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 `);
 
-		assert.equal(configuration.name, "payments-service");
 		assert.equal(configuration.sources.length, 2);
 		assert.deepEqual(configuration.sources[0], {
-			path: "./knowledge",
-			rules: [
-				{ folder: "decisions", level: "MUST" },
-				{ folder: "practices", level: "SHOULD" },
+			path: "knowledge",
+			folders: [
+				{ folder: "architecture", level: "MUST" },
+				{
+					folder: "engineering-guides",
+					level: "SHOULD",
+					documents: { exclude: ["templates/**"] },
+					applies_to: { include: ["src/**"] },
+				},
 			],
 		});
-		const gitSource = configuration.sources[1];
-		assert.ok(gitSource !== undefined && "git" in gitSource);
-		assert.equal(gitSource.git.ref, "main");
+		assert.deepEqual(configuration.sources[1], {
+			repository: "https://github.com/acme/shared-knowledge.git",
+			branch: "main",
+			path: "knowledge",
+			id_prefix: "shared",
+			folders: [{ folder: "reliability", level: "MUST" }],
+		});
 	});
 
 	it("adds an empty source list to a minimal configuration", () => {
@@ -48,23 +59,36 @@ sources:
 		});
 	});
 
-	it("accepts a Git source without a ref and with a path", () => {
+	it("normalizes the short folder mapping form to a level", () => {
 		const configuration = loadConfiguration(`
 version: 2
 sources:
-  - git:
-      repository: https://github.com/example/engineering-knowledge
-      path: bundles/backend
-    rules:
-      - folder: guides/clickhouse
-        level: SHOULD
+  - path: knowledge
+    folders:
+      decisions: MUST
+`);
+
+		assert.deepEqual(configuration.sources[0], {
+			path: "knowledge",
+			folders: [{ folder: "decisions", level: "MUST" }],
+		});
+	});
+
+	it("accepts a Git source without a branch and with a path", () => {
+		const configuration = loadConfiguration(`
+version: 2
+sources:
+  - repository: https://github.com/example/engineering-knowledge
+    path: bundles/backend
+    folders:
+      guides/clickhouse: SHOULD
 `);
 
 		const gitSource = configuration.sources[0];
-		assert.ok(gitSource !== undefined && "git" in gitSource);
-		assert.equal(gitSource.git.ref, undefined);
-		assert.equal(gitSource.git.path, "bundles/backend");
-		assert.equal(gitSource.rules[0]?.folder, "guides/clickhouse");
+		assert.ok(gitSource !== undefined && "repository" in gitSource);
+		assert.equal(gitSource.branch, undefined);
+		assert.equal(gitSource.path, "bundles/backend");
+		assert.equal(gitSource.folders[0]?.folder, "guides/clickhouse");
 	});
 
 	it("accepts SSH repository URLs in ssh and scp form", () => {
@@ -75,15 +99,13 @@ sources:
 			const configuration = loadConfiguration(`
 version: 2
 sources:
-  - git:
-      repository: ${JSON.stringify(repository)}
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${JSON.stringify(repository)}
+    folders:
+      decisions: MUST
 `);
 			const gitSource = configuration.sources[0];
-			assert.ok(gitSource !== undefined && "git" in gitSource);
-			assert.equal(gitSource.git.repository, repository);
+			assert.ok(gitSource !== undefined && "repository" in gitSource);
+			assert.equal(gitSource.repository, repository);
 		}
 	});
 
@@ -94,15 +116,39 @@ sources:
 		);
 	});
 
-	it("rejects a source without a rules list", () => {
+	it("rejects a top-level name or description field", () => {
+		assert.throws(
+			() => loadConfiguration("version: 2\nname: payments\n"),
+			/Unrecognized key/,
+		);
+		assert.throws(
+			() => loadConfiguration("version: 2\ndescription: text\n"),
+			/Unrecognized key/,
+		);
+	});
+
+	it("rejects a source without a folders object", () => {
 		assert.throws(
 			() =>
 				loadConfiguration(`
 version: 2
 sources:
-  - path: ./knowledge
+  - path: knowledge
 `),
 			ConfigurationLoadError,
+		);
+	});
+
+	it("rejects an empty folders object", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: knowledge
+    folders: {}
+`),
+			/at least one folder mapping/,
 		);
 	});
 
@@ -112,14 +158,12 @@ sources:
 				loadConfiguration(`
 version: 2
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: guides
-        level: MUST
-      - folder: guides/clickhouse
-        level: SHOULD
+  - path: knowledge
+    folders:
+      guides: MUST
+      guides/clickhouse: SHOULD
 `),
-			/sources\[0\]\.rules\[1\]\.folder: Folder 'guides\/clickhouse' overlaps rules\[0\]\.folder/,
+			/Folder 'guides\/clickhouse' overlaps folder 'guides'/,
 		);
 	});
 
@@ -127,14 +171,12 @@ sources:
 		const configuration = loadConfiguration(`
 version: 2
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: decisions
-        level: MUST
-  - path: ./more-knowledge
-    rules:
-      - folder: decisions
-        level: SHOULD
+  - path: knowledge
+    folders:
+      decisions: MUST
+  - path: more-knowledge
+    folders:
+      decisions: SHOULD
 `);
 
 		assert.equal(configuration.sources.length, 2);
@@ -154,15 +196,47 @@ sources:
 					loadConfiguration(`
 version: 2
 sources:
-  - path: ./knowledge
-    rules:
-      - folder: ${JSON.stringify(folder)}
-        level: MUST
+  - path: knowledge
+    folders:
+      ${JSON.stringify(folder)}: MUST
 `),
 				ConfigurationLoadError,
 				folder,
 			);
 		}
+	});
+
+	it("rejects an invalid id prefix", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: knowledge
+    id_prefix: "Bad Prefix"
+    folders:
+      decisions: MUST
+`),
+			ConfigurationLoadError,
+		);
+	});
+
+	it("points at the exact field inside a source union failure", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: knowledge
+    folders:
+      decisions:
+        level: MUST
+        documents:
+          excluse:
+            - llm/**/*.md
+`),
+			/sources\[0\]\.folders\.decisions\.documents\.excluse: Unrecognized key/,
+		);
 	});
 
 	it("rejects an unrecognized field with its YAML path", () => {
@@ -202,12 +276,10 @@ sources:
 					loadConfiguration(`
 version: 2
 sources:
-  - git:
-      repository: https://github.com/acme/knowledge
-      ref: ${JSON.stringify(branch)}
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: https://github.com/acme/knowledge
+    branch: ${JSON.stringify(branch)}
+    folders:
+      decisions: MUST
 `),
 				ConfigurationLoadError,
 				branch,
@@ -229,11 +301,9 @@ sources:
 					loadConfiguration(`
 version: 2
 sources:
-  - git:
-      repository: ${JSON.stringify(repository)}
-    rules:
-      - folder: decisions
-        level: MUST
+  - repository: ${JSON.stringify(repository)}
+    folders:
+      decisions: MUST
 `),
 				ConfigurationLoadError,
 				repository,

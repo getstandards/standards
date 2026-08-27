@@ -7,7 +7,7 @@ import { ReviewProviderError } from "../../review/review-agent.js";
 import type { ReviewReport } from "../../review/review-report.js";
 import { ReviewTargetError } from "../../review/review-target.js";
 import { runReview } from "../../review/run-review.js";
-import type { RuleLoadResult } from "../../rules/rules-loader.js";
+import type { Resolution } from "../../rules/rules-loader.js";
 import { loadRules } from "../../rules/rules-loader.js";
 import { errorMessage } from "../../utils/errors.js";
 import { runGit } from "../../utils/git.js";
@@ -66,7 +66,7 @@ export async function runReviewCommand(
 	const reportImportProgress = createImportProgressReporter((line) =>
 		output.error(line),
 	);
-	let loaded: RuleLoadResult;
+	let loaded: Resolution;
 	try {
 		loaded = await loadRules(workingDirectory, {
 			gitSourceStore,
@@ -105,9 +105,7 @@ export async function runReviewCommand(
 			headRevision,
 			workingDirectory,
 			targets: options.targets,
-			ruleSet: loaded.rules,
-			gitSources: loaded.gitSources,
-			warnings: loaded.warnings,
+			resolution: loaded,
 			models,
 			modelOptions: {
 				model: options.model,

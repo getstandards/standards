@@ -36,7 +36,9 @@ export function renderReviewReportText(report: ReviewReport): string {
 	if (report.sources.length > 0) {
 		lines.push("", "Knowledge sources:");
 		for (const source of report.sources) {
-			lines.push(`  ${source.repository} at ${source.ref}: ${source.commit}`);
+			lines.push(
+				`  ${source.repository} at ${source.branch}: ${source.commit}`,
+			);
 		}
 	}
 	if (report.warnings.length > 0) {
@@ -117,7 +119,7 @@ export function renderReviewReportTerminal(report: ReviewReport): string {
 		lines.push("", chalk.bold("Knowledge sources"));
 		for (const source of report.sources) {
 			lines.push(
-				`  ${source.repository} at ${source.ref}: ${chalk.dim(source.commit)}`,
+				`  ${source.repository} at ${source.branch}: ${chalk.dim(source.commit)}`,
 			);
 		}
 	}

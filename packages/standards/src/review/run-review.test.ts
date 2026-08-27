@@ -49,8 +49,6 @@ const moneyRule: Rule = {
 	description: "",
 	body: "Floating-point money loses cents.",
 	applies_to: { include: ["**/*.ts"] },
-	tags: [],
-	aliases: [],
 };
 
 afterEach(async () => {
@@ -106,7 +104,7 @@ describe("runReview", () => {
 		const gitSources = [
 			{
 				repository: "https://example.com/standards.git",
-				ref: "main",
+				branch: "main",
 				commit: "0123456789012345678901234567890123456789",
 			},
 		];
@@ -117,9 +115,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
-			gitSources,
-			warnings,
+			resolution: { rules: [moneyRule], gitSources, warnings },
 			models,
 			environment: {},
 		});
@@ -189,7 +185,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 		});
@@ -252,7 +248,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 		});
@@ -304,7 +300,7 @@ describe("runReview", () => {
 			headRevision: head,
 			workingDirectory: directory,
 			targets: ["invoice.ts"],
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 			reportProgress: (line) => progressLines.push(line),
@@ -370,7 +366,7 @@ describe("runReview", () => {
 			headRevision: head,
 			workingDirectory: directory,
 			targets: ["invoice.ts"],
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 			reportVerbose: (line) => verboseLines.push(line),
@@ -435,7 +431,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 			reportStepProgress: (progress) => stepProgress.push(progress),
@@ -477,7 +473,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 			reportStepProgress: (progress) => stepProgress.push(progress),
@@ -504,7 +500,7 @@ describe("runReview", () => {
 				headRevision: head,
 				workingDirectory: directory,
 				targets: ["missing.ts"],
-				ruleSet: [moneyRule],
+				resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 				models,
 				environment: {},
 			}),
@@ -524,7 +520,7 @@ describe("runReview", () => {
 			baseRevision: base,
 			headRevision: head,
 			workingDirectory: directory,
-			ruleSet: [moneyRule],
+			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
 			environment: {},
 		});
