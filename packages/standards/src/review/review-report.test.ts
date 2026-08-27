@@ -15,6 +15,7 @@ const costBasis = "charged" as const;
 
 function rule(overrides: Partial<Rule> & Pick<Rule, "id" | "level">): Rule {
 	return {
+		folder: "decisions",
 		title: "rule statement",
 		body: "rationale",
 		...overrides,

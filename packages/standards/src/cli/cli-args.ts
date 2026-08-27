@@ -48,7 +48,14 @@ export interface ReviewCliArgs {
 	/** Repository-relative file or directory paths that limit the review. */
 	targets: string[];
 	base?: string;
+	/** A `<base>..<head>` or `<base>...<head>` Git commit range. */
+	range?: string;
+	staged: boolean;
 	all: boolean;
+	/** Limit the rule set to the rule with this exact id. */
+	rule?: string;
+	/** Limit the rule set to the rules of this mapped folder. */
+	folder?: string;
 	format: ReviewFormat;
 	model?: string;
 	evaluationModel?: string;
@@ -99,7 +106,11 @@ function parseRawCliArguments(arguments_: readonly string[]) {
 				"cache-dir": { type: "string" },
 				"no-cache": { type: "boolean", default: false },
 				base: { type: "string" },
+				range: { type: "string" },
+				staged: { type: "boolean", default: false },
 				all: { type: "boolean", default: false },
+				rule: { type: "string" },
+				folder: { type: "string" },
 				verbose: { type: "boolean", default: false },
 				format: { type: "string" },
 				model: { type: "string" },
@@ -149,7 +160,11 @@ export function parseCliArgs(
 	const parsedCommand = commandResult.data;
 	const reviewValues: ReviewOptionValues = {
 		base: parsed.values.base,
+		range: parsed.values.range,
+		staged: Boolean(parsed.values.staged),
 		all: Boolean(parsed.values.all),
+		rule: parsed.values.rule,
+		folder: parsed.values.folder,
 		verbose: Boolean(parsed.values.verbose),
 		format: parsed.values.format,
 		model: parsed.values.model,
@@ -220,7 +235,11 @@ export function parseCliArgs(
 /** The raw review option values read from the parsed arguments. */
 interface ReviewOptionValues {
 	base?: string;
+	range?: string;
+	staged: boolean;
 	all: boolean;
+	rule?: string;
+	folder?: string;
 	verbose: boolean;
 	format?: string;
 	model?: string;
@@ -241,7 +260,11 @@ function rejectReviewOnlyOptions(
 ): void {
 	const givenOptions: [string, boolean][] = [
 		["--base", values.base !== undefined],
+		["--range", values.range !== undefined],
+		["--staged", values.staged],
 		["--all", values.all],
+		["--rule", values.rule !== undefined],
+		["--folder", values.folder !== undefined],
 		["--verbose", values.verbose],
 		["--format", values.format !== undefined],
 		["--model", values.model !== undefined],
@@ -265,9 +288,26 @@ function parseReviewCommand(
 	cacheDir: string | undefined,
 	noCache: boolean,
 ): ParsedCliArgs {
-	if (values.all && values.base !== undefined) {
+	// The scope options each select the whole change, so they cannot combine.
+	const givenScopeOptions = (
+		[
+			["--all", values.all],
+			["--base", values.base !== undefined],
+			["--range", values.range !== undefined],
+			["--staged", values.staged],
+		] as const
+	)
+		.filter(([, isGiven]) => isGiven)
+		.map(([name]) => name);
+	if (givenScopeOptions.length > 1) {
 		throw new CliArgumentError(
-			"Command 'review' does not accept '--all' and '--base' together.",
+			`Command 'review' does not accept '${givenScopeOptions[0]}' and '${givenScopeOptions[1]}' together.`,
+			REVIEW_ERROR_STATUS,
+		);
+	}
+	if (values.rule !== undefined && values.folder !== undefined) {
+		throw new CliArgumentError(
+			"Command 'review' does not accept '--rule' and '--folder' together: '--rule' already names one rule.",
 			REVIEW_ERROR_STATUS,
 		);
 	}
@@ -283,7 +323,11 @@ function parseReviewCommand(
 		review: {
 			targets,
 			base: values.base,
+			range: values.range,
+			staged: values.staged,
 			all: values.all,
+			rule: values.rule,
+			folder: values.folder,
 			format: formatResult.data,
 			model: values.model,
 			evaluationModel: values.evaluationModel,

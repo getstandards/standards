@@ -1,4 +1,5 @@
-import { runGit } from "../utils/git.js";
+import { runGit, runGitDiff } from "../utils/git.js";
+import type { ChangeScope } from "./change-scope.js";
 
 /** How a changed file differs between the base and head revisions. */
 export type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
@@ -34,10 +35,8 @@ export interface ChangedFile {
 
 /** Inputs that select the change to compute (specs/review.md). */
 export interface ComputeChangeOptions {
-	/** The commit the change is compared against, or the empty tree for a full review. */
-	baseRevision: string;
-	/** The commit that contains the change, checked out on disk. */
-	headRevision: string;
+	/** The change the review compares. */
+	scope: ChangeScope;
 	/** The head checkout directory that Git runs in. */
 	workingDirectory: string;
 	/** Context lines kept around each hunk. Defaults to 3. */
@@ -47,31 +46,90 @@ export interface ComputeChangeOptions {
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))?\s\+(\d+)(?:,(\d+))?\s@@/;
 
 /**
- * Compute the changed files and their hunks between two revisions.
+ * Compute the changed files and their hunks of one change scope
+ * (specs/review.md change scope).
  *
  * It runs `git diff` in the head checkout with rename detection and quoting
  * turned off, then parses the unified diff. A full review passes the empty tree
- * as `baseRevision`, so every tracked file of the head revision is an added
- * file (specs/review.md).
+ * as the base revision, so every file of the head side is an added file.
  */
 export async function computeChange(
 	options: ComputeChangeOptions,
 ): Promise<ChangedFile[]> {
 	const contextLines = options.contextLines ?? 3;
-	const diff = await runGit(
+	const scope = options.scope;
+	const diffArguments = [
+		"-c",
+		"core.quotePath=false",
+		"diff",
+		"--no-color",
+		"--find-renames",
+		`--unified=${contextLines}`,
+	];
+	if (scope.kind === "staged") {
+		diffArguments.push("--cached");
+	}
+	diffArguments.push(scope.baseRevision);
+	if (scope.kind === "commits") {
+		diffArguments.push(scope.headRevision);
+	}
+
+	const files = parseUnifiedDiff(
+		await runGitDiff(diffArguments, options.workingDirectory),
+	);
+	if (scope.kind !== "working-tree") {
+		return files;
+	}
+	return [
+		...files,
+		...(await computeUntrackedFiles(options.workingDirectory, contextLines)),
+	];
+}
+
+/**
+ * Compute the untracked files of the working tree as added files
+ * (specs/review.md change scope).
+ *
+ * `git ls-files --others --exclude-standard` lists exactly the untracked files
+ * that Git does not ignore, in path order. Each one is diffed against
+ * `/dev/null`, which emits the `new file mode` and `+++ b/<path>` markers that
+ * the unified-diff parser reads.
+ */
+async function computeUntrackedFiles(
+	workingDirectory: string,
+	contextLines: number,
+): Promise<ChangedFile[]> {
+	const listing = await runGit(
 		[
 			"-c",
 			"core.quotePath=false",
-			"diff",
-			"--no-color",
-			"--find-renames",
-			`--unified=${contextLines}`,
-			options.baseRevision,
-			options.headRevision,
+			"ls-files",
+			"--others",
+			"--exclude-standard",
 		],
-		options.workingDirectory,
+		workingDirectory,
 	);
-	return parseUnifiedDiff(diff);
+	const files: ChangedFile[] = [];
+	for (const untrackedPath of listing
+		.split("\n")
+		.filter((line) => line !== "")) {
+		const diff = await runGitDiff(
+			[
+				"-c",
+				"core.quotePath=false",
+				"diff",
+				"--no-color",
+				`--unified=${contextLines}`,
+				"--no-index",
+				"--",
+				"/dev/null",
+				untrackedPath,
+			],
+			workingDirectory,
+		);
+		files.push(...parseUnifiedDiff(diff));
+	}
+	return files;
 }
 
 /** Parse the unified diff text that `git diff` writes into changed files. */

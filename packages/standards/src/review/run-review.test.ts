@@ -45,6 +45,7 @@ function anthropicFaux() {
 const moneyRule: Rule = {
 	id: "money.no-float",
 	level: "MUST",
+	folder: "decisions",
 	title: "Money must not be a floating-point number.",
 	description: "",
 	body: "Floating-point money loses cents.",
@@ -112,8 +113,7 @@ describe("runReview", () => {
 			{ document: "standards/broken.md", problem: "missing level" },
 		];
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources, warnings },
 			models,
@@ -182,8 +182,7 @@ describe("runReview", () => {
 		faux.setResponses([respond, respond]);
 
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
@@ -245,8 +244,7 @@ describe("runReview", () => {
 		faux.setResponses([respond, respond]);
 
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
@@ -296,8 +294,7 @@ describe("runReview", () => {
 		const progressLines: string[] = [];
 
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			targets: ["invoice.ts"],
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
@@ -362,8 +359,7 @@ describe("runReview", () => {
 		const verboseLines: string[] = [];
 
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			targets: ["invoice.ts"],
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
@@ -376,7 +372,7 @@ describe("runReview", () => {
 		expect(report.findings).toEqual([]);
 		expect(verboseLines).toEqual([
 			`Base revision: ${base}`,
-			`Head revision: ${head}`,
+			`Head: ${head}`,
 			"Targets: invoice.ts",
 			"Selected invoice.ts (modified): money.no-float",
 			"Evaluation task 1/1: invoice.ts (rules: money.no-float)",
@@ -428,8 +424,7 @@ describe("runReview", () => {
 		const stepProgress: ReviewStepProgress[] = [];
 
 		await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
@@ -470,8 +465,7 @@ describe("runReview", () => {
 		const stepProgress: ReviewStepProgress[] = [];
 
 		await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,
@@ -496,8 +490,7 @@ describe("runReview", () => {
 
 		await expect(
 			runReview({
-				baseRevision: base,
-				headRevision: head,
+				scope: { kind: "commits", baseRevision: base, headRevision: head },
 				workingDirectory: directory,
 				targets: ["missing.ts"],
 				resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
@@ -517,8 +510,7 @@ describe("runReview", () => {
 		const { faux, models } = anthropicFaux();
 
 		const report = await runReview({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 			resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
 			models,

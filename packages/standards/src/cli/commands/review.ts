@@ -2,6 +2,7 @@ import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
 import { createImportProgressReporter } from "../../cache/import-progress.js";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
+import type { ChangeScope } from "../../review/change-scope.js";
 import { ModelSelectionError } from "../../review/model-selection.js";
 import { ReviewProviderError } from "../../review/review-agent.js";
 import type { ReviewReport } from "../../review/review-report.js";
@@ -17,6 +18,7 @@ import {
 	renderReviewReportTerminal,
 	renderReviewReportText,
 } from "./review-report-text.js";
+import { filterRuleSet, ReviewRuleFilterError } from "./review-rule-filter.js";
 import { createReviewSpinner, formatStepProgress } from "./review-spinner.js";
 import { renderVerboseLineTerminal } from "./review-verbose.js";
 import { formatValidationError } from "./validate-diagnostic.js";
@@ -44,13 +46,9 @@ export async function runReviewCommand(
 ): Promise<number> {
 	const { workingDirectory, output, environment, settings } = context;
 
-	let baseRevision: string;
-	let headRevision: string;
+	let scope: ChangeScope;
 	try {
-		({ baseRevision, headRevision } = await resolveReviewRevisions(
-			workingDirectory,
-			options,
-		));
+		scope = await resolveChangeScope(workingDirectory, options);
 	} catch (error) {
 		output.error(errorMessage(error));
 		return 2;
@@ -79,6 +77,26 @@ export async function runReviewCommand(
 		await gitSourceStore.dispose();
 	}
 
+	// '--rule' and '--folder' shrink the rule set before the pipeline runs, so
+	// the report's resolved_rules count reflects the filtered set.
+	let resolution: Resolution;
+	try {
+		resolution = {
+			...loaded,
+			rules: filterRuleSet(loaded.rules, {
+				rule: options.rule,
+				folder: options.folder,
+			}),
+		};
+	} catch (error) {
+		output.error(
+			error instanceof ReviewRuleFilterError
+				? error.diagnostic
+				: errorMessage(error),
+		);
+		return 2;
+	}
+
 	const { models } = createStandardsModels({
 		authFilePath: resolveAuthFilePath({ environment }),
 	});
@@ -101,11 +119,10 @@ export async function runReviewCommand(
 	let report: ReviewReport;
 	try {
 		report = await runReview({
-			baseRevision,
-			headRevision,
+			scope,
 			workingDirectory,
 			targets: options.targets,
-			resolution: loaded,
+			resolution,
 			models,
 			modelOptions: {
 				model: options.model,
@@ -143,23 +160,19 @@ export async function runReviewCommand(
 	return report.conclusion === "compliant" ? 0 : 1;
 }
 
-/** The resolved base and head commits of one review (specs/cli.md review). */
-interface ReviewRevisions {
-	baseRevision: string;
-	headRevision: string;
-}
-
 /**
- * Resolve the head and base revisions (specs/cli.md review).
+ * Resolve the change scope of one review (specs/cli.md review).
  *
- * The head revision is the checkout's HEAD. The base revision is the empty
- * tree with `--all`, the `--base` revision when given, and the merge base of
- * HEAD and the remote default branch otherwise.
+ * Without a scope option the scope is the working tree against the merge base
+ * of HEAD and the remote default branch, so uncommitted work is reviewed.
+ * `--base` replaces that base, `--all` replaces it with the empty tree,
+ * `--range` selects two commits, and `--staged` selects the index.
  */
-async function resolveReviewRevisions(
+async function resolveChangeScope(
 	workingDirectory: string,
 	options: ReviewCliArgs,
-): Promise<ReviewRevisions> {
+): Promise<ChangeScope> {
+	// Every scope needs a repository with at least one commit.
 	let headRevision: string;
 	try {
 		headRevision = await runGit(
@@ -176,6 +189,14 @@ Next action:
   Run 'standards review' inside a Git repository with at least one commit.`);
 	}
 
+	if (options.range !== undefined) {
+		return resolveRangeScope(workingDirectory, options.range);
+	}
+
+	if (options.staged) {
+		return { kind: "staged", baseRevision: headRevision };
+	}
+
 	if (options.all) {
 		// The hash of the empty tree, computed so it matches the repository's
 		// object format (SHA-1 or SHA-256).
@@ -183,7 +204,7 @@ Next action:
 			["hash-object", "-t", "tree", "/dev/null"],
 			workingDirectory,
 		);
-		return { baseRevision: emptyTree, headRevision };
+		return { kind: "working-tree", baseRevision: emptyTree };
 	}
 
 	if (options.base !== undefined) {
@@ -192,7 +213,7 @@ Next action:
 				["rev-parse", "--verify", `${options.base}^{commit}`],
 				workingDirectory,
 			);
-			return { baseRevision, headRevision };
+			return { kind: "working-tree", baseRevision };
 		} catch (error) {
 			throw new ReviewInputError(`Standards review could not run.
 
@@ -213,7 +234,7 @@ Next action:
 			["merge-base", "HEAD", remoteDefaultBranch],
 			workingDirectory,
 		);
-		return { baseRevision, headRevision };
+		return { kind: "working-tree", baseRevision };
 	} catch {
 		throw new ReviewInputError(`Standards review could not run.
 
@@ -221,8 +242,91 @@ Problem:
   Cannot resolve the merge base of HEAD and the remote default branch.
 
 Next action:
-  Give a base revision with --base <revision>, or run a full review with
-  --all.`);
+  Give a base revision with --base <revision>, a commit range with
+  --range <base>..<head>, or run a full review with --all.`);
+	}
+}
+
+/**
+ * Resolve a `--range` value to a commits scope (specs/cli.md review --range).
+ *
+ * `A..B` compares the two commits. `A...B` compares the merge base of A and B
+ * with B, which is the change B adds to A.
+ */
+async function resolveRangeScope(
+	workingDirectory: string,
+	range: string,
+): Promise<ChangeScope> {
+	const symmetricIndex = range.indexOf("...");
+	const separatorIndex =
+		symmetricIndex === -1 ? range.indexOf("..") : symmetricIndex;
+	const separatorLength = symmetricIndex === -1 ? 2 : 3;
+	const left = separatorIndex === -1 ? "" : range.slice(0, separatorIndex);
+	const right =
+		separatorIndex === -1 ? "" : range.slice(separatorIndex + separatorLength);
+	if (separatorIndex === -1 || left === "" || right === "") {
+		throw new ReviewInputError(`Standards review could not run.
+
+Problem:
+  Option '--range' expects '<base>..<head>' or '<base>...<head>', not '${range}'.
+
+Next action:
+  Give --range a Git commit range, such as 'main..HEAD' or 'HEAD~3..HEAD'.`);
+	}
+
+	const headRevision = await resolveRangeRevision(
+		workingDirectory,
+		range,
+		right,
+	);
+	if (symmetricIndex === -1) {
+		const baseRevision = await resolveRangeRevision(
+			workingDirectory,
+			range,
+			left,
+		);
+		return { kind: "commits", baseRevision, headRevision };
+	}
+
+	// A symmetric range resolves both sides first, so an unresolvable revision
+	// reports itself instead of a merge-base failure.
+	await resolveRangeRevision(workingDirectory, range, left);
+	try {
+		const baseRevision = await runGit(
+			["merge-base", left, right],
+			workingDirectory,
+		);
+		return { kind: "commits", baseRevision, headRevision };
+	} catch (error) {
+		throw new ReviewInputError(`Standards review could not run.
+
+Problem:
+  Cannot resolve the merge base of '${left}' and '${right}': ${errorMessage(error)}
+
+Next action:
+  Give --range two commits that share history, or use '${left}..${right}'.`);
+	}
+}
+
+/** Resolve one side of a `--range` value to a commit. */
+async function resolveRangeRevision(
+	workingDirectory: string,
+	range: string,
+	revision: string,
+): Promise<string> {
+	try {
+		return await runGit(
+			["rev-parse", "--verify", `${revision}^{commit}`],
+			workingDirectory,
+		);
+	} catch (error) {
+		throw new ReviewInputError(`Standards review could not run.
+
+Problem:
+  Cannot resolve the revision '${revision}' of '--range ${range}': ${errorMessage(error)}
+
+Next action:
+  Give --range two revisions that Git can resolve in this repository.`);
 	}
 }
 
@@ -238,7 +342,7 @@ Problem:
   ${error.message}
 
 Next action:
-  Give a target path that exists in the head revision.`;
+  Give a target path that exists in ${error.place}.`;
 	}
 	if (error instanceof ReviewProviderError) {
 		return `Standards review failed and reports no conclusion.

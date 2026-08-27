@@ -449,6 +449,7 @@ async function loadBundleRules(
 		const rule: Rule = {
 			id,
 			level: document.mapping.level,
+			folder: document.mapping.folder,
 			title:
 				frontmatter.title ?? path.posix.basename(document.folderPath, ".md"),
 			body: parsed.body,

@@ -81,11 +81,27 @@ const REVIEW_OPTIONS: OptionHelp[] = [
 	{ name: "-h, --help", description: "Show this help" },
 	{
 		name: "--base <revision>",
-		description: "Review the change since <revision>",
+		description: "Review the working tree against <revision>",
+	},
+	{
+		name: "--range <base>..<head>",
+		description: "Review a commit range",
+	},
+	{
+		name: "--staged",
+		description: "Review only the staged changes",
 	},
 	{
 		name: "--all",
-		description: "Review every tracked file of the head revision",
+		description: "Review every file of the working tree",
+	},
+	{
+		name: "--rule <id>",
+		description: "Limit the review to the rule with this id",
+	},
+	{
+		name: "--folder <folder>",
+		description: "Limit the review to the rules of this mapped folder",
 	},
 	{
 		name: "--format <format>",
@@ -114,6 +130,30 @@ const REVIEW_OPTIONS: OptionHelp[] = [
 	{
 		name: "--no-cache",
 		description: "Do not read from or write to the source cache",
+	},
+];
+
+/** One example invocation of `standards review` and what it reviews. */
+const REVIEW_EXAMPLES: CommandHelp[] = [
+	{
+		name: "standards review",
+		description: "Review the uncommitted work on this branch",
+	},
+	{
+		name: "standards review --staged",
+		description: "Review only the staged changes",
+	},
+	{
+		name: "standards review --range main..HEAD",
+		description: "Review a commit range",
+	},
+	{
+		name: "standards review src/billing",
+		description: "Review the change under one directory",
+	},
+	{
+		name: "standards review --all --rule <id>",
+		description: "Check every file against one rule",
 	},
 ];
 
@@ -167,11 +207,16 @@ export function renderReviewHelp(): string {
 	return [
 		"Usage: standards review [options] [target...]",
 		"",
-		"Review the change between a base revision and HEAD against the resolved",
-		"rules. A target limits the review to a file or a directory.",
+		"Review a change against the resolved rules. Without a scope option, the",
+		"change is the working tree against the merge base of HEAD and the remote",
+		"default branch, so uncommitted work is reviewed. A target limits the",
+		"review to a file or a directory.",
 		"",
 		"Options:",
 		...formatHelpEntries(REVIEW_OPTIONS),
+		"",
+		"Examples:",
+		...formatHelpEntries(REVIEW_EXAMPLES),
 		"",
 		"Default models:",
 		...formatHelpEntries(defaultModels),

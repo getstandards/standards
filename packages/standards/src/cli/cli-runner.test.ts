@@ -704,7 +704,7 @@ status: stable
 			expect(report.warnings).toEqual([]);
 		});
 
-		it("asks for --base or --all when the merge base is unresolvable", async () => {
+		it("asks for --base, --range, or --all when the merge base is unresolvable", async () => {
 			const { repositoryRoot } = await createReviewRepository();
 			const { output, stdout, stderr } = captureOutput();
 
@@ -713,6 +713,7 @@ status: stable
 			expect(exitStatus).toBe(2);
 			expect(stdout).toEqual([]);
 			expect(stderr[0]).toContain("--base");
+			expect(stderr[0]).toContain("--range");
 			expect(stderr[0]).toContain("--all");
 		});
 
@@ -749,6 +750,140 @@ status: stable
 			);
 		});
 
+		it("rejects two scope options together", async () => {
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["review", "--staged", "--range", "main..HEAD"],
+				"/unused",
+				output,
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stdout).toEqual([]);
+			expect(stderr[0]).toContain(
+				"Command 'review' does not accept '--range' and '--staged' together.",
+			);
+		});
+
+		it("rejects --rule together with --folder", async () => {
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["review", "--rule", "a.b", "--folder", "decisions"],
+				"/unused",
+				output,
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stderr[0]).toContain(
+				"Command 'review' does not accept '--rule' and '--folder' together",
+			);
+		});
+
+		it("rejects a --range value without two revisions", async () => {
+			const { repositoryRoot } = await createReviewRepository();
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["review", "--range", "main"],
+				repositoryRoot,
+				output,
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stdout).toEqual([]);
+			expect(stderr[0]).toContain("'<base>..<head>'");
+		});
+
+		it("rejects a --range revision that Git cannot resolve", async () => {
+			const { repositoryRoot } = await createReviewRepository();
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await runCli(
+				["review", "--range", "main..nope"],
+				repositoryRoot,
+				output,
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stderr[0]).toContain("Cannot resolve the revision 'nope'");
+		});
+
+		it("reviews a commit range with --range", async () => {
+			const { repositoryRoot, baseRevision } = await createReviewRepository();
+			const headRevision = await runGit(["rev-parse", "HEAD"], repositoryRoot);
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await withModelEnvironment(() =>
+				runCli(
+					[
+						"review",
+						"--range",
+						`${baseRevision}..${headRevision}`,
+						"--verbose",
+					],
+					repositoryRoot,
+					output,
+				),
+			);
+
+			expect(exitStatus).toBe(0);
+			expect(stdout[0]).toContain("Standards review: compliant");
+			expect(
+				stderr.some((line) => line.includes(`Head: ${headRevision}`)),
+			).toBe(true);
+		});
+
+		it("limits the rule set to one rule with --rule", async () => {
+			const { repositoryRoot, baseRevision } = await createReviewRepository();
+			const { output, stdout } = captureOutput();
+
+			const exitStatus = await withModelEnvironment(() =>
+				runCli(
+					["review", "--base", baseRevision, "--rule", "example-rule"],
+					repositoryRoot,
+					output,
+				),
+			);
+
+			expect(exitStatus).toBe(0);
+			expect(stdout[0]).toContain("Resolved rules:      1");
+		});
+
+		it("names 'standards validate' for a --rule id that resolves to nothing", async () => {
+			const { repositoryRoot, baseRevision } = await createReviewRepository();
+			const { output, stdout, stderr } = captureOutput();
+
+			const exitStatus = await withModelEnvironment(() =>
+				runCli(
+					["review", "--base", baseRevision, "--rule", "missing"],
+					repositoryRoot,
+					output,
+				),
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stdout).toEqual([]);
+			expect(stderr.at(-1)).toContain("standards validate");
+		});
+
+		it("lists the mapped folders for an unknown --folder", async () => {
+			const { repositoryRoot, baseRevision } = await createReviewRepository();
+			const { output, stderr } = captureOutput();
+
+			const exitStatus = await withModelEnvironment(() =>
+				runCli(
+					["review", "--base", baseRevision, "--folder", "missing"],
+					repositoryRoot,
+					output,
+				),
+			);
+
+			expect(exitStatus).toBe(2);
+			expect(stderr.at(-1)).toContain("decisions");
+		});
+
 		it("prints detailed progress to standard error with --verbose", async () => {
 			const { repositoryRoot, baseRevision } = await createReviewRepository();
 			const { output, stdout, stderr } = captureOutput();
@@ -766,7 +901,9 @@ status: stable
 			expect(
 				stderr.some((line) => line.includes(`Base revision: ${baseRevision}`)),
 			).toBe(true);
-			expect(stderr.some((line) => line.includes("Head revision:"))).toBe(true);
+			expect(stderr.some((line) => line.includes("Head: working tree"))).toBe(
+				true,
+			);
 		});
 
 		it("rejects an unknown review format", async () => {
@@ -807,7 +944,7 @@ status: stable
 			);
 		});
 
-		it("prints review help with the default models", async () => {
+		it("prints review help with examples and the default models", async () => {
 			const { output, stdout, stderr } = captureOutput();
 
 			const exitStatus = await runCli(["review", "--help"], "/unused", output);
@@ -817,6 +954,8 @@ status: stable
 			expect(stdout[0]).toContain("Usage: standards review");
 			expect(stdout[0]).toContain("--verbose");
 			expect(stdout[0]).toContain("--verification-model");
+			expect(stdout[0]).toContain("Examples:");
+			expect(stdout[0]).toContain("standards review --range main..HEAD");
 			expect(stdout[0]).toContain("Default models:");
 			expect(stdout[0]).toContain("claude-sonnet-5");
 		});

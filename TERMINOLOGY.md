@@ -8,6 +8,7 @@ Canonical words used across Standards code and documentation.
 - **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files. Only a folder mapping sets it: file applicability is a consumer decision, so a frontmatter `applies_to` field is ignored. The object form scopes every rule in the folder; the list form scopes groups of documents through per-entry `documents` globs.
 - **branch** — The branch a Git knowledge source follows, set by `branch` without the `refs/heads/` prefix. When absent, the loader uses the repository's default branch. The loader resolves it to its current commit at the start of every run.
 - **bundle** — One directory tree of knowledge documents in the Open Knowledge Format. A knowledge source holds one bundle. OKF does not specify folder names, so the folder mapping states which folders hold rules.
+- **change scope** — The change one review compares. It is `commits` (between two commits), `working-tree` (between a base commit and the working tree, untracked files included), or `staged` (between `HEAD` and the index). The `--base`, `--range`, `--staged`, and `--all` options of `standards review` select it.
 - **cache read tokens** — The input tokens of a step that the provider served from its prompt cache, reported as `cache_read_tokens`.
 - **cache write tokens** — The input tokens of a step that the provider wrote to its prompt cache, reported as `cache_write_tokens`.
 - **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion and the report.
@@ -21,7 +22,7 @@ Canonical words used across Standards code and documentation.
 - **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, with an applicable suggested change when one is present, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
 - **fingerprint** — The stable identifier of a finding whose comment is no longer mapped to the current diff: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the source anchor, joined with a newline.
 - **folder mapping** — One entry of a source `folders` object: a bundle-relative folder mapped to a requirement `level`, with optional `documents` and `applies_to` filters. Enforcement is opt-in per folder.
-- **full review** — A review whose base revision is the empty tree, so the change contains every tracked file of the head revision as an added file.
+- **full review** — A review whose base revision is the empty tree, so the change contains every file of the scope's head side as an added file.
 - **glob** — A repository-relative, OS-independent path pattern. Supported constructs are `*`, `?`, `**`, `[abc]`, and `{a,b}`.
 - **id prefix** — The optional `id_prefix` of a knowledge source, added before every derived id from that source to resolve identity conflicts between sources.
 - **knowledge document** — One markdown file with YAML frontmatter in the Open Knowledge Format. An enforced knowledge document is a rule.
@@ -31,8 +32,8 @@ Canonical words used across Standards code and documentation.
 - **provider** — One model provider registered in the pi AI SDK, named by its SDK provider id. The id is the credential key: `openai` and `openai-codex` are separate providers with separate credentials.
 - **repository root** — The canonicalized root directory where `.standards.yml` must live.
 - **resolution** — The complete output of configuration loading and rule discovery: the ordered rules, the resolved Git commits, and the warnings. The review pipeline receives it as one value.
-- **review** — The act of an agent that evaluates a change — the hunks between a base and a head revision — against the resolved rule set.
-- **rule** — One enforced knowledge document: `id`, `level`, `title` (the rule statement), an optional `description`, the markdown `body`, and an optional `applies_to`.
+- **review** — The act of an agent that evaluates a change — the hunks of one change scope — against the resolved rule set.
+- **rule** — One enforced knowledge document: `id`, `level`, `folder` (the mapped folder it came from), `title` (the rule statement), an optional `description`, the markdown `body`, and an optional `applies_to`.
 - **rule set** — The flattened ordered list of rules after resolution.
 - **rule verdict** — The evaluation agent's decision for one rule and file pair: `compliant` or `violated`, with one finding per violation.
 - **source anchor** — The exact source text covered by a finding's `lines`, read from the head revision or from the base revision for a deleted file, with `\n` between lines and no final line break.

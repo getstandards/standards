@@ -105,7 +105,13 @@ export async function runCli(
 			case "review":
 				return await runReviewCommand(
 					context,
-					review ?? { targets: [], all: false, format: "text", verbose: false },
+					review ?? {
+						targets: [],
+						staged: false,
+						all: false,
+						format: "text",
+						verbose: false,
+					},
 				);
 			case "cache":
 				return await runCacheCommand(context, cacheSubcommand);

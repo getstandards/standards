@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <strong>Write your engineering rules as knowledge documents. An agent enforces them on every pull request.</strong><br>
-  Standards catches the judgement calls that no linter can express, and backs every finding with evidence and line numbers.
+  <strong>Record an engineering decision once, by hand or with an AI. Standards enforces it on every change after that.</strong><br>
+  Rules are plain markdown knowledge documents. Standards catches the judgement calls that no linter can express, and backs every finding with evidence and line numbers.
 </p>
 
 <p align="center">
@@ -18,9 +18,11 @@
 
 <!-- Add a screenshot of the pull request comment here. It is the best demo of what Standards does. -->
 
-## Rules are knowledge documents
+## From decision to enforced rule
 
-A rule is a knowledge document: a markdown file with YAML frontmatter, in the Open Knowledge Format (OKF). Rules live in knowledge folders and change through pull requests, like code. `.standards.yml` maps each folder to a requirement level: `MUST` blocks the merge, `SHOULD` warns.
+Your team takes a decision: an architecture choice, an API convention, a lesson from an incident. You or your coding agent record it as a markdown file with YAML frontmatter. Every frontmatter field is optional: the title defaults to the file name, and unknown fields are ignored. Standards reads the files as Open Knowledge Format (OKF) documents, so bundles written for other OKF tools work unchanged.
+
+From that moment, every review judges each change against it. Rules live in knowledge folders and change through pull requests, like code. An ADR under `decisions/` and a convention under `practices/` work the same way. `.standards.yml` maps each folder to a requirement level: `MUST` blocks the merge, `SHOULD` warns.
 
 ```yaml
 version: 2
@@ -101,6 +103,14 @@ See [provider credentials](specs/credentials.md) for environment variables and o
 standards review
 ```
 
+The review compares your working tree, uncommitted changes included, against the merge base with the default branch. Use `--staged` for the staged changes, `--range main..HEAD` for a commit range, or `--all` for a full audit.
+
+While you write a rule, check one file against that rule only:
+
+```bash
+standards review --all src/api/orders.ts --rule api.paginate-unbounded-collections
+```
+
 **5. Enforce the rules on every pull request:**
 
 ```yaml
@@ -137,6 +147,7 @@ Engineering rules live in wikis, RFCs, and one reviewer's head. They surface aft
 
 - **Not a linter.** Linters match patterns. Standards rules describe when a technique applies and which trade-off to prefer. An agent applies them the way a reviewer does.
 - **Not a generic AI reviewer.** No borrowed opinions. The agent enforces *your* rules: written by your team, versioned in Git, scoped by globs, reported with evidence you can audit.
+- **Written by people or by agents.** A coding agent can record the decision it just applied as a knowledge document, in the same pull request as the code. The next review enforces it.
 - **Shareable.** A source pulls a knowledge bundle from another repository and follows its branch, so every review judges the change against the most recent accepted knowledge. The report records the resolved commit of each source.
 - **Token-frugal.** Deterministic planning selects what the model sees; the agent only does the work that needs judgement.
 - **Your provider, your model.** You choose the provider and the model for each step of the review.

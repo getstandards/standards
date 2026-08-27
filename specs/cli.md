@@ -31,7 +31,8 @@ The executable name is `standards`. It provides these commands:
 ## General behavior
 
 Running `standards` without a command or with `--help` or `-h` MUST print help
-to standard output and exit with status `0`. Root help MUST open with a banner
+to standard output and exit with status `0`. A bare invocation MUST NOT start
+a review, because a review spends model tokens. Root help MUST open with a banner
 that shows the Standards logo and the application version. It MUST list
 `cache` and `auth` as single commands. It MUST NOT list their subcommands;
 `standards cache --help` and `standards auth --help` print them. Running
@@ -104,8 +105,12 @@ These options control command input and output:
 
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
-| `--base <revision>` | Review the change since `<revision>` instead of the default base. | `review` |
-| `--all` | Run a full review: review every tracked file of the head revision. For `models`, list every known provider and every model id. | `review`, `models` |
+| `--base <revision>` | Review the working tree against `<revision>` instead of the default base. | `review` |
+| `--range <base>..<head>` | Review a commit range. | `review` |
+| `--staged` | Review only the staged changes. | `review` |
+| `--all` | Run a full review: review every file of the working tree. For `models`, list every known provider and every model id. | `review`, `models` |
+| `--rule <id>` | Limit the rule set to the rule with this exact id. | `review` |
+| `--folder <folder>` | Limit the rule set to the rules of one mapped folder. | `review` |
 | `--format <format>` | Output format: `text` (default) or `json`. | `review`, `rules` |
 | `--verbose` | Print detailed review progress to standard error. | `review` |
 
@@ -216,20 +221,52 @@ configuration or any other repository file.
 directory.
 
 Running `standards review --help` or `standards review -h` MUST print the
-review help text, which lists the review options and the current default
-models, to standard output and exit with status `0`.
+review help text, which lists the review options, example invocations, and
+the current default models, to standard output and exit with status `0`. The
+examples MUST show the default scope and at least one other scope option.
 
-The head revision is the checkout's `HEAD`. The base revision resolves in
-this priority order:
+### Change scope
 
-1. The `--all` option, which selects the empty tree as the base revision.
-2. The `--base <revision>` option, accepting any revision that Git can
-   resolve.
-3. The merge base of `HEAD` and the remote default branch.
+A review compares exactly one change scope, defined in
+[Standards review](./review.md). The scope options select it:
 
-When neither `--all` nor `--base` is given and the merge base cannot be
-resolved, the command MUST fail with a diagnostic that asks for `--base` or
-`--all` and exit with status `2`.
+| Invocation | Scope | Meaning |
+| --- | --- | --- |
+| `standards review` | `working-tree` | Review the current branch against the merge base of `HEAD` and the remote default branch. All uncommitted changes are included. |
+| `standards review --base <revision>` | `working-tree` | The same, with `<revision>` as the base. |
+| `standards review --staged` | `staged` | Review only the staged changes. |
+| `standards review --range <base>..<head>` | `commits` | Review a commit range. |
+| `standards review --all` | `working-tree` | Full audit: the base is the empty tree, so every tracked and untracked file counts as added. |
+
+The scope options `--all`, `--base`, `--range`, and `--staged` are mutually
+exclusive. An invocation that gives more than one MUST fail with a diagnostic
+that names the two options and exit with status `2`.
+
+Without a scope option, the base revision is the merge base of `HEAD` and the
+remote default branch (`refs/remotes/origin/HEAD`). When that merge base
+cannot be resolved, the command MUST fail with a diagnostic that asks for
+`--base`, `--range`, or `--all` and exit with status `2`.
+
+Every scope requires a repository with at least one commit. `HEAD` failing to
+resolve MUST produce a diagnostic and exit with status `2`.
+
+### `review --range <base>..<head>`
+
+`--range` accepts the Git range forms:
+
+- `A..B`: the base is `A`, the head is `B`. Example: `main..HEAD`,
+  `HEAD~3..HEAD`.
+- `A...B`: the base is the merge base of `A` and `B`, the head is `B`.
+
+Both revisions MUST resolve to commits. A value without `..`, with an empty
+side, or with an unresolvable revision MUST produce a diagnostic that shows
+the expected form and exit with status `2`.
+
+The agents read extra context from the working tree. When the range head is
+not the checked-out commit, that context can disagree with the reviewed
+change, as [Standards review](./review.md) states. The command does not check
+out the range head. The same applies to `--staged` when the working tree
+differs from the index.
 
 ### Targets
 
@@ -240,12 +277,18 @@ target is a repository-relative path to a file or a directory.
 - A directory target selects every changed file under that path.
 - Without targets, the review selects every changed file.
 
-Targets filter the changed files. They do not change the base or head
-revision, so they combine with `--base` and with `--all`.
-`standards review --all <dir>` audits the tracked files under `<dir>`.
+Targets filter the changed files. They do not change the scope, so they
+combine with every scope option and with the rule set options.
+`standards review --all <dir>` audits the files under `<dir>`.
 
-A target MUST exist in the head revision, or match a deleted file's base
-path. For an invalid target, the command MUST print a diagnostic and exit
+A target MUST exist on the scope's head side, or match a deleted file's base
+path:
+
+- `commits`: the target exists in the head commit.
+- `working-tree`: the target exists in the working tree.
+- `staged`: the target exists in the index.
+
+For an invalid target, the command MUST print a diagnostic and exit
 with status `2`. A valid target that matches no changed file is not an
 error: it can produce an empty selection, which ends the review with a
 compliant conclusion and zero model tokens, as defined in
@@ -255,16 +298,49 @@ compliant conclusion and zero model tokens, as defined in
 
 `standards review --all` runs a full review, as defined in
 [Standards review](./review.md): the base revision is the empty tree, so
-the change contains every tracked file of the head revision as an added
-file. The pipeline, the report, and the exit statuses are unchanged.
-
-`--all` and `--base` select the same input, so an invocation that gives
-both MUST fail with a diagnostic and exit with status `2`.
+the change contains every file of the working tree as an added file,
+untracked files included. The pipeline, the report, and the exit statuses are
+unchanged.
 
 A full review reads the whole repository through the selected models and
 costs tokens in proportion to the repository size. The command MUST report
 the number of selected files and evaluation tasks to standard error before
 the evaluation step starts.
+
+### `review --rule <id>` and `review --folder <folder>`
+
+`--rule <id>` limits the resolved rule set to the rule with that exact id
+before selection runs. An id that matches no resolved rule MUST produce a
+diagnostic and exit with status `2`; the next action names `standards
+validate` as the command that lists the resolved rule ids.
+
+`--folder <folder>` limits the resolved rule set to the rules that a folder
+mapping with that folder name produced, for example `--folder decisions` with
+the mapping `folders: { decisions: MUST }`. A name that matches no mapped
+folder MUST produce a diagnostic that lists the mapped folder names and exit
+with status `2`.
+
+`--rule` and `--folder` are mutually exclusive: `--rule` already names one
+rule. Giving both MUST fail with a diagnostic and exit with status `2`.
+
+Both options combine with every scope and with targets:
+
+```
+standards review src/foo.ts --rule clickhouse.2026-08-26-ttl-v2
+```
+
+reviews only the changed hunks of `src/foo.ts` against that one rule. To
+check a whole file against one rule regardless of changes:
+
+```
+standards review --all src/foo.ts --rule clickhouse.2026-08-26-ttl-v2
+```
+
+This is the cheap loop for testing a rule while writing it.
+
+Both options shrink the rule set before the pipeline runs, so the report's
+`resolved_rules` count reflects the filtered set. The report format version
+does not change.
 
 The command MUST write the report to standard output: the text rendering by
 default, or the machine-readable report with `--format json`, as defined in
@@ -299,7 +375,8 @@ prints only the report and the progress that this specification requires.
 
 The verbose output MUST include the items that the review reaches:
 
-- The base revision, the head revision, and the targets.
+- The change scope and the targets: the base revision, and `working tree`,
+  `index`, or the head commit as the head.
 - The changed files that the targets select, and the rules that selection
   assigns to each file.
 - The evaluation tasks that planning packs, and the rules in each task.

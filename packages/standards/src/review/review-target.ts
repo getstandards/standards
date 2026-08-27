@@ -1,14 +1,33 @@
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import { runGit } from "../utils/git.js";
 import type { ChangedFile } from "./change-diff.js";
+import type { ChangeScope } from "./change-scope.js";
+
+/** Name the place a target must exist in, per change scope (specs/cli.md targets). */
+function scopeTargetPlace(scope: ChangeScope): string {
+	switch (scope.kind) {
+		case "commits":
+			return "the head revision";
+		case "working-tree":
+			return "the working tree";
+		case "staged":
+			return "the index";
+	}
+}
 
 /**
- * A review target that does not exist in the head revision and matches no
+ * A review target that does not exist in the scope's head side and matches no
  * deleted file's base path (specs/cli.md targets).
  */
 export class ReviewTargetError extends Error {
-	public constructor(public readonly target: string) {
+	public constructor(
+		public readonly target: string,
+		/** Where the target had to exist: the head revision, working tree, or index. */
+		public readonly place = "the head revision",
+	) {
 		super(
-			`Target '${target}' does not exist in the head revision and matches no deleted file.`,
+			`Target '${target}' does not exist in ${place} and matches no deleted file.`,
 		);
 		this.name = "ReviewTargetError";
 	}
@@ -44,45 +63,91 @@ export function filterChangedFilesByTargets(
 /** What target validation checks each target against (specs/cli.md targets). */
 export interface ValidateTargetsOptions {
 	targets: readonly string[];
-	headRevision: string;
+	scope: ChangeScope;
 	workingDirectory: string;
 	changedFiles: readonly ChangedFile[];
 }
 
 /**
- * Throw ReviewTargetError for a target that does not exist in the head
- * revision and matches no deleted file's base path (specs/cli.md targets).
- * A valid target that matches no changed file is not an error.
+ * Throw ReviewTargetError for a target that does not exist in the scope's head
+ * side and matches no deleted file's base path (specs/cli.md targets). A valid
+ * target that matches no changed file is not an error.
  */
 export async function validateTargets(
 	options: ValidateTargetsOptions,
 ): Promise<void> {
+	const place = scopeTargetPlace(options.scope);
 	const deletedPaths = options.changedFiles
 		.filter((file) => file.status === "deleted")
 		.map((file) => file.path);
 	for (const target of options.targets) {
 		if (target === "") {
-			throw new ReviewTargetError(target);
+			throw new ReviewTargetError(target, place);
 		}
 		if (deletedPaths.some((path) => targetMatchesPath(target, path))) {
 			continue;
 		}
-		if (!(await existsInHeadRevision(target, options))) {
-			throw new ReviewTargetError(target);
+		if (!(await existsInScope(target, options))) {
+			throw new ReviewTargetError(target, place);
 		}
 	}
 }
 
-/** Return whether a path names a file or directory in the head revision. */
-async function existsInHeadRevision(
+/** Return whether a path names a file or directory on the scope's head side. */
+async function existsInScope(
 	target: string,
 	options: ValidateTargetsOptions,
 ): Promise<boolean> {
+	switch (options.scope.kind) {
+		case "commits":
+			return gitPathExists(
+				["cat-file", "-e", `${options.scope.headRevision}:${target}`],
+				options.workingDirectory,
+			);
+		case "staged":
+			// The index holds no tree entries, so a directory target exists
+			// exactly when the index holds a file under it.
+			return (
+				(
+					await runGit(
+						["--literal-pathspecs", "ls-files", "--cached", "--", target],
+						options.workingDirectory,
+					)
+				).length > 0
+			);
+		case "working-tree":
+			return existsInWorkingTree(target, options.workingDirectory);
+	}
+}
+
+/** Return whether a Git command that checks path existence succeeds. */
+async function gitPathExists(
+	arguments_: string[],
+	workingDirectory: string,
+): Promise<boolean> {
 	try {
-		await runGit(
-			["cat-file", "-e", `${options.headRevision}:${target}`],
-			options.workingDirectory,
-		);
+		await runGit(arguments_, workingDirectory);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Return whether a repository-relative target names a file or directory in the
+ * working tree. A target that escapes the repository root is not a target.
+ */
+async function existsInWorkingTree(
+	target: string,
+	workingDirectory: string,
+): Promise<boolean> {
+	const resolved = path.resolve(workingDirectory, target);
+	const relative = path.relative(workingDirectory, resolved);
+	if (relative.startsWith("..") || path.isAbsolute(relative)) {
+		return false;
+	}
+	try {
+		await stat(resolved);
 		return true;
 	} catch {
 		return false;

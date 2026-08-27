@@ -22,11 +22,27 @@ export function runGitOutput(
 	return runGitCommand(arguments_, workingDirectory, false);
 }
 
+/**
+ * Run a `git diff` command and return its raw standard output.
+ *
+ * `git diff --no-index` exits with status 1 when the two inputs differ, which
+ * is the normal outcome for the untracked files of a working-tree review, so
+ * status 1 is not a failure here. The output is not trimmed: a diff can end
+ * with a context line that is an empty line, written as a single space.
+ */
+export function runGitDiff(
+	arguments_: string[],
+	workingDirectory: string,
+): Promise<string> {
+	return runGitCommand(arguments_, workingDirectory, false, [1]);
+}
+
 /** Run one Git command and resolve with its standard output. */
 function runGitCommand(
 	arguments_: string[],
 	workingDirectory: string,
 	trimOutput: boolean,
+	allowedExitStatuses: readonly number[] = [],
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		execFile(
@@ -40,7 +56,10 @@ function runGitCommand(
 				windowsHide: true,
 			},
 			(error, stdout, stderr) => {
-				if (error !== null) {
+				if (
+					error !== null &&
+					!allowedExitStatuses.includes(error.code as number)
+				) {
 					reject(new Error(stderr.trim() || error.message));
 					return;
 				}

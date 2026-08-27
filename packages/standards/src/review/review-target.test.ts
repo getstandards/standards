@@ -98,7 +98,7 @@ describe("validateTargets", () => {
 		await expect(
 			validateTargets({
 				targets: ["src/kept.ts", "src", "old/gone.ts"],
-				headRevision,
+				scope: { kind: "commits", baseRevision: headRevision, headRevision },
 				workingDirectory: directory,
 				changedFiles: [changedFile("old/gone.ts", "deleted")],
 			}),
@@ -111,7 +111,56 @@ describe("validateTargets", () => {
 		await expect(
 			validateTargets({
 				targets: ["missing.ts"],
-				headRevision,
+				scope: { kind: "commits", baseRevision: headRevision, headRevision },
+				workingDirectory: directory,
+				changedFiles: [],
+			}),
+		).rejects.toThrow(ReviewTargetError);
+	});
+
+	it("accepts an untracked file in a working-tree scope", async () => {
+		const { directory, headRevision } = await initRepositoryWithHead();
+		await writeFile(path.join(directory, "src", "new.ts"), "export {};\n");
+
+		await expect(
+			validateTargets({
+				targets: ["src/new.ts"],
+				scope: { kind: "working-tree", baseRevision: headRevision },
+				workingDirectory: directory,
+				changedFiles: [],
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("rejects a target that escapes the repository root", async () => {
+		const { directory, headRevision } = await initRepositoryWithHead();
+
+		await expect(
+			validateTargets({
+				targets: ["../outside.ts"],
+				scope: { kind: "working-tree", baseRevision: headRevision },
+				workingDirectory: directory,
+				changedFiles: [],
+			}),
+		).rejects.toThrow(ReviewTargetError);
+	});
+
+	it("rejects a working-tree-only target in a staged scope", async () => {
+		const { directory, headRevision } = await initRepositoryWithHead();
+		await writeFile(path.join(directory, "src", "new.ts"), "export {};\n");
+
+		await expect(
+			validateTargets({
+				targets: ["src"],
+				scope: { kind: "staged", baseRevision: headRevision },
+				workingDirectory: directory,
+				changedFiles: [],
+			}),
+		).resolves.toBeUndefined();
+		await expect(
+			validateTargets({
+				targets: ["src/new.ts"],
+				scope: { kind: "staged", baseRevision: headRevision },
 				workingDirectory: directory,
 				changedFiles: [],
 			}),

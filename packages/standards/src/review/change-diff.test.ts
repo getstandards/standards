@@ -46,8 +46,7 @@ describe("computeChange", () => {
 		const head = await commitAll(directory, "head");
 
 		const files = await computeChange({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 		});
 
@@ -69,8 +68,7 @@ describe("computeChange", () => {
 		const head = await commitAll(directory, "head");
 
 		const files = await computeChange({
-			baseRevision: EMPTY_TREE,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: EMPTY_TREE, headRevision: head },
 			workingDirectory: directory,
 		});
 
@@ -90,8 +88,7 @@ describe("computeChange", () => {
 		const head = await commitAll(directory, "head");
 
 		const files = await computeChange({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 		});
 
@@ -113,13 +110,86 @@ describe("computeChange", () => {
 		const head = await commitAll(directory, "head");
 
 		const files = await computeChange({
-			baseRevision: base,
-			headRevision: head,
+			scope: { kind: "commits", baseRevision: base, headRevision: head },
 			workingDirectory: directory,
 		});
 
 		expect(files).toHaveLength(1);
 		expect(files[0]?.binary).toBe(true);
 		expect(files[0]?.hunks).toHaveLength(0);
+	});
+
+	it("includes staged, unstaged, and untracked files in a working-tree scope", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "staged.ts"), "const a = 1;\n");
+		await writeFile(path.join(directory, "unstaged.ts"), "const b = 2;\n");
+		await writeFile(path.join(directory, ".gitignore"), "ignored.ts\n");
+		const base = await commitAll(directory, "base");
+
+		await writeFile(path.join(directory, "staged.ts"), "const a = 10;\n");
+		await runGit(["add", "staged.ts"], directory);
+		await writeFile(path.join(directory, "unstaged.ts"), "const b = 20;\n");
+		await writeFile(path.join(directory, "untracked.ts"), "const c = 3;\n");
+		await writeFile(path.join(directory, "ignored.ts"), "const d = 4;\n");
+
+		const files = await computeChange({
+			scope: { kind: "working-tree", baseRevision: base },
+			workingDirectory: directory,
+		});
+
+		const byPath = new Map(files.map((file) => [file.path, file]));
+		expect([...byPath.keys()].sort()).toEqual([
+			"staged.ts",
+			"unstaged.ts",
+			"untracked.ts",
+		]);
+		expect(byPath.get("staged.ts")?.status).toBe("modified");
+		expect(byPath.get("unstaged.ts")?.status).toBe("modified");
+		expect(byPath.get("untracked.ts")?.status).toBe("added");
+		expect(byPath.get("untracked.ts")?.hunks[0]?.lines).toEqual([
+			"+const c = 3;",
+		]);
+	});
+
+	it("reports only the staged changes in a staged scope", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "staged.ts"), "const a = 1;\n");
+		await writeFile(path.join(directory, "unstaged.ts"), "const b = 2;\n");
+		const head = await commitAll(directory, "head");
+
+		await writeFile(path.join(directory, "staged.ts"), "const a = 10;\n");
+		await runGit(["add", "staged.ts"], directory);
+		await writeFile(path.join(directory, "unstaged.ts"), "const b = 20;\n");
+		await writeFile(path.join(directory, "untracked.ts"), "const c = 3;\n");
+
+		const files = await computeChange({
+			scope: { kind: "staged", baseRevision: head },
+			workingDirectory: directory,
+		});
+
+		expect(files.map((file) => file.path)).toEqual(["staged.ts"]);
+		expect(files[0]?.hunks[0]?.lines).toContain("+const a = 10;");
+	});
+
+	it("reports every working-tree file as added for a full review", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "tracked.ts"), "const a = 1;\n");
+		await commitAll(directory, "head");
+		await writeFile(path.join(directory, "untracked.ts"), "const b = 2;\n");
+		const emptyTree = await runGit(
+			["hash-object", "-t", "tree", "/dev/null"],
+			directory,
+		);
+
+		const files = await computeChange({
+			scope: { kind: "working-tree", baseRevision: emptyTree },
+			workingDirectory: directory,
+		});
+
+		expect(files.map((file) => file.path).sort()).toEqual([
+			"tracked.ts",
+			"untracked.ts",
+		]);
+		expect(files.every((file) => file.status === "added")).toBe(true);
 	});
 });

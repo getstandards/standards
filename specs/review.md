@@ -4,12 +4,11 @@ Defines how Standards runs a review.
 
 ## Purpose
 
-A review evaluates a change — the hunks between a base and a head revision —
-against the resolved rule set and reports the result. The change can come
-from anywhere: a pull request, a local branch, or a working tree state that
-the invoking surface turned into two revisions. This document specifies the review pipeline: its steps,
-which steps use an agent, what each step receives and returns, and the rules
-that keep token use low.
+A review evaluates a change — the hunks of one change scope — against the
+resolved rule set and reports the result. The change can come from anywhere: a
+pull request, a local branch, or the uncommitted state of a working tree. This
+document specifies the review pipeline: its steps, which steps use an agent,
+what each step receives and returns, and the rules that keep token use low.
 
 The pipeline has one economic goal: spend the minimum number of model tokens
 for the maximum number of correct findings. Two design rules follow from this
@@ -40,12 +39,11 @@ selects its model. It does not specify:
 
 ## Inputs
 
-A review has five inputs:
+A review has four inputs:
 
 | Input | Meaning |
 | --- | --- |
-| Base revision | The commit that the change is compared against. |
-| Head revision | The commit that contains the change, checked out on disk. |
+| Change scope | The change the review compares. [Change scope](#change-scope) defines it. |
 | Targets | An optional set of repository-relative paths that limits the review. An empty set means the whole change. |
 | Rule set | The ordered rule list produced by resolution. |
 | Selected models | The provider and model that run each agent step. |
@@ -53,23 +51,52 @@ A review has five inputs:
 [Model selection](#model-selection) defines how the selected models are
 resolved.
 
-The invoking surface, such as the CLI or the GitHub Action, selects the base
-and head revisions and supplies the targets. The change is the set of hunks
-between the base and head revisions. Resolution follows
+The invoking surface, such as the CLI or the GitHub Action, selects the change
+scope and supplies the targets. Resolution follows
 [Standards configuration format](./configuration.md): each Git source's
 `branch` resolves to its current commit at the start of the run, and the report
-records the resolved commits.
+records the resolved commits. The invoking surface MAY give the review a rule
+set that is smaller than the resolved one, as the `--rule` and `--folder`
+options of [Standards CLI](./cli.md) do. The rule set the review receives is
+the one the report's `resolved_rules` count reports.
+
+### Change scope
+
+A review compares exactly one change scope. The scope has a base side and a
+head side. There are three kinds:
+
+| Kind | Change | Git diff |
+| --- | --- | --- |
+| `commits` | Between two commits. | `git diff <base> <head>` |
+| `working-tree` | Between a base commit and the working tree, staged and unstaged changes included, untracked files included as added files. | `git diff <base>` plus one `--no-index` diff per untracked file |
+| `staged` | Between `HEAD` and the index: only the staged changes. | `git diff --cached` |
+
+Every scope produces the same changed-file shape, and every pipeline step runs
+on it without modification. An untracked file MUST be included in the
+`working-tree` scope only when Git does not ignore it, as
+`git ls-files --others --exclude-standard` reports.
+
+The agents read extra context from the working tree, which is the head side of
+the `working-tree` scope. For a `commits` scope whose head is not the
+checked-out commit, and for a `staged` scope whose working tree differs from
+the index, that context can disagree with the reviewed change. The
+implementation does not check out the head side; this specification states the
+mismatch instead.
+
+The `--base`, `--range`, `--staged`, and `--all` options of
+`standards review`, defined in [Standards CLI](./cli.md), select the scope. The
+GitHub Action always selects a `commits` scope.
 
 ### Full review
 
 A full review evaluates the whole project instead of one change. The
 invoking surface selects the empty tree as the base revision. Git resolves
-the empty tree in every repository, so the change contains every tracked
-file of the head revision as an added file. Every pipeline step runs on this
+the empty tree in every repository, so the change contains every file of the
+head side as an added file. Every pipeline step runs on this
 change without modification. Targets apply as in any review: they restrict
-the full review to the tracked files they match. The `--all` option of
+the full review to the files they match. The `--all` option of
 `standards review`, defined in [Standards CLI](./cli.md), requests a full
-review.
+review over the `working-tree` scope, so untracked files are audited too.
 
 A full review is an audit, not a merge gate. It shows what the rule set
 finds in the code that exists today: before a repository adopts a rule set,
@@ -600,8 +627,8 @@ These rules keep token use low across the pipeline:
 
 This version does not define:
 
-- The `standards review` option surface, such as base and head selection.
-  [Standards CLI](./cli.md) defines it.
+- The `standards review` option surface, such as change scope and rule set
+  selection. [Standards CLI](./cli.md) defines it.
 - A triage step between selection and planning that discards rule and file
   pairs with a smaller model before evaluation.
 - Result caching across runs, such as skipping hunks already reviewed at the

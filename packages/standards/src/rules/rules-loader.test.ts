@@ -177,6 +177,7 @@ describe("loadRules", () => {
 
 		assert.deepEqual(Object.keys(rules[0] ?? {}).sort(), [
 			"body",
+			"folder",
 			"id",
 			"level",
 			"title",

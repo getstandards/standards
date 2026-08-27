@@ -3,6 +3,7 @@ import type { Resolution } from "../rules/rules-loader.js";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { emptyStepUsage } from "./agent-usage.js";
 import { computeChange } from "./change-diff.js";
+import { type ChangeScope, describeScopeHead } from "./change-scope.js";
 import { planEvaluationTasks } from "./evaluation-plan.js";
 import { runEvaluation } from "./evaluation-step.js";
 import { type ModelReference, parseModelReference } from "./model-reference.js";
@@ -27,10 +28,8 @@ import { runVerification } from "./verification-step.js";
 
 /** Everything one review needs to run end to end (specs/review.md). */
 export interface RunReviewInput {
-	/** The commit the change is compared against, or the empty tree for a full review. */
-	baseRevision: string;
-	/** The commit that contains the change, checked out on disk. */
-	headRevision: string;
+	/** The change the review compares (specs/review.md change scope). */
+	scope: ChangeScope;
 	/** The head checkout directory, which Git and the agents read. */
 	workingDirectory: string;
 	/** Repository-relative paths that limit the review. Empty means the whole change. */
@@ -84,15 +83,14 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 	]);
 
 	const allChangedFiles = await computeChange({
-		baseRevision: input.baseRevision,
-		headRevision: input.headRevision,
+		scope: input.scope,
 		workingDirectory: input.workingDirectory,
 	});
 	const targets = (input.targets ?? []).map(normalizeTarget);
 	if (targets.length > 0) {
 		await validateTargets({
 			targets,
-			headRevision: input.headRevision,
+			scope: input.scope,
 			workingDirectory: input.workingDirectory,
 			changedFiles: allChangedFiles,
 		});
@@ -100,8 +98,8 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 	const changedFiles = filterChangedFilesByTargets(allChangedFiles, targets);
 	const reportVerbose = input.reportVerbose;
 	if (reportVerbose !== undefined) {
-		reportVerbose(`Base revision: ${input.baseRevision}`);
-		reportVerbose(`Head revision: ${input.headRevision}`);
+		reportVerbose(`Base revision: ${input.scope.baseRevision}`);
+		reportVerbose(`Head: ${describeScopeHead(input.scope)}`);
 		if (targets.length > 0) {
 			reportVerbose(`Targets: ${targets.join(", ")}`);
 		}

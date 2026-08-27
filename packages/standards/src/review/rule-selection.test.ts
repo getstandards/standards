@@ -6,6 +6,7 @@ import { selectRules } from "./rule-selection.js";
 function rule(overrides: Partial<Rule> & Pick<Rule, "id">): Rule {
 	return {
 		level: "MUST",
+		folder: "decisions",
 		title: "rule statement",
 		description: "",
 		body: "rationale",

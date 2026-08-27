@@ -328,8 +328,13 @@ async function runReviewPipeline(
 	// The model inputs already arrived as STANDARDS_MODEL and the per-step
 	// variables, so selection precedence stays as specs/review.md defines it.
 	const report = await runReview({
-		baseRevision: revisions.baseRevision,
-		headRevision: revisions.headRevision,
+		// The action reviews the commits of a pull request, never a runner's
+		// working tree (specs/github.md).
+		scope: {
+			kind: "commits",
+			baseRevision: revisions.baseRevision,
+			headRevision: revisions.headRevision,
+		},
 		workingDirectory: context.workspace,
 		resolution: loaded,
 		models,

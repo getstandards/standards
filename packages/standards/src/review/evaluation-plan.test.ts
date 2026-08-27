@@ -14,6 +14,7 @@ function selection(path: string, ruleIds: string[]): FileSelection {
 	const rules: Rule[] = ruleIds.map((id) => ({
 		id,
 		level: "MUST",
+		folder: "decisions",
 		title: "rule statement",
 		description: "",
 		body: "rationale",

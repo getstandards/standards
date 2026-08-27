@@ -24,6 +24,7 @@ async function makeCheckout(): Promise<string> {
 const rule: Rule = {
 	id: "billing.no-float-money",
 	level: "MUST",
+	folder: "decisions",
 	title: "Money must not be a floating-point number.",
 	description: "",
 	body: "Floating-point money loses cents.",
