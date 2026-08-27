@@ -101,6 +101,21 @@ describe("runInitCommand", () => {
 		expect(content).toBe("version: 2\n");
 	});
 
+	it("refuses to shadow an existing .standards.yaml entry file", async () => {
+		const directory = await temporaryDirectory("init-yaml-exists-");
+		await writeFile(path.join(directory, ".standards.yaml"), "version: 2\n");
+		const { context, stdout, stderr } = makeContext(directory);
+
+		const exitStatus = await runInitCommand(context);
+
+		expect(exitStatus).toBe(1);
+		expect(stdout).toEqual([]);
+		expect(stderr[0]).toContain("'.standards.yaml' already exists");
+		await expect(
+			readFile(path.join(directory, ".standards.yml"), "utf8"),
+		).rejects.toThrow();
+	});
+
 	it("builds a local source from a scan and writes on confirmation", async () => {
 		const directory = await temporaryDirectory("init-local-");
 		const { context, stdout } = makeContext(directory);

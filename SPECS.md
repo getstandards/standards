@@ -63,8 +63,9 @@ discovery. It contains the ordered rules, resolved Git sources, and warnings.
 
 ## Configuration
 
-The entry file remains `.standards.yml`. The configuration version remains
-`2` because version 2 is not yet released.
+The entry file is `.standards.yml` or `.standards.yaml` at the repository
+root; a repository that contains both MUST fail resolution. The configuration
+version remains `2` because version 2 is not yet released.
 
 ### Complete example
 
@@ -209,12 +210,18 @@ not need a Standards-specific layout.
 
 ### Target repository applicability
 
-The folder mapping `applies_to` filter scopes every rule in that folder to
-target repository files. Its globs are relative to the target repository root.
+The folder mapping `applies_to` filter scopes rules to target repository
+files. Its `include`/`exclude` globs are relative to the target repository
+root. The object form scopes every rule in the folder. The list form scopes
+groups of documents: each entry carries an optional folder-relative
+`documents` glob and its own filter, and the first entry that matches a
+document decides that rule's filter. A document that no entry matches gets no
+filter.
 
-A knowledge document can also contain the existing `applies_to` frontmatter
-extension. When both filters exist, both MUST match. Exclusion in either filter
-wins.
+A knowledge document does not set file applicability. Which files a rule
+applies to depends on the target repository layout, so only the consumer
+configuration decides it. A frontmatter `applies_to` field is accepted and
+ignored, like any other unused field.
 
 The folder filter lets a consumer apply a shared bundle to its own repository
 layout. The shared bundle does not need to know that layout.
@@ -249,7 +256,7 @@ For a Git source, the dialogue can use the normal source cache to scan the
 selected branch. If the source cannot be scanned, the user can enter folder
 paths manually.
 
-Cancellation MUST leave the repository unchanged. If `.standards.yml` already
+Cancellation MUST leave the repository unchanged. If an entry file already
 exists, `init` MUST refuse to replace it.
 
 ### Non-interactive use
@@ -345,7 +352,8 @@ keys.
 - the configuration path,
 - each knowledge source,
 - each mapped folder and its level,
-- each discovered rule with document path and derived id,
+- each discovered rule with document path, derived id, and resolved
+  `applies_to` scope (every file when unscoped),
 - resolved Git commits,
 - skipped document warnings,
 - total rule counts by level.

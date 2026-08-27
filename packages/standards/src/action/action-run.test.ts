@@ -44,7 +44,11 @@ async function createReviewRepository(): Promise<{
 sources:
   - path: ./knowledge
     folders:
-      decisions: MUST
+      decisions:
+        level: MUST
+        applies_to:
+          include:
+            - "**/*.ts"
 `,
 	);
 	// The document at decisions/money/no-float.md derives the id money.no-float.
@@ -57,9 +61,6 @@ sources:
 title: Money must not be a floating-point number.
 description: Floating-point money loses cents.
 status: stable
-applies_to:
-  include:
-    - "**/*.ts"
 ---
 
 Use an integer of cents.

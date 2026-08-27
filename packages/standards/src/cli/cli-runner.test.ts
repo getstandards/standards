@@ -98,7 +98,13 @@ describe("runCli", () => {
 sources:
   - path: ./knowledge
     folders:
-      decisions: MUST
+      decisions:
+        level: MUST
+        applies_to:
+          include:
+            - src/**
+          exclude:
+            - src/generated/**
       practices: SHOULD
 `);
 		await writeRuleDocument(
@@ -126,8 +132,10 @@ sources:
 		expect(report).toContain("    decisions: MUST");
 		expect(report).toContain("    practices: SHOULD");
 		expect(report).toContain("Rules:");
-		expect(report).toMatch(/MUST\s+example-rule/);
-		expect(report).toMatch(/SHOULD\s+example-recommendation/);
+		expect(report).toMatch(
+			/MUST\s+example-rule\s+src\/\*\* except src\/generated\/\*\*/,
+		);
+		expect(report).toMatch(/SHOULD\s+example-recommendation\s+every file/);
 		expect(report).toContain("  Resolved rules: 2");
 		expect(report).toContain("  Levels:         MUST: 1, SHOULD: 1");
 		expect(stderr).toEqual([]);
@@ -602,16 +610,17 @@ Next action:
 sources:
   - path: ./knowledge
     folders:
-      decisions: MUST
+      decisions:
+        level: MUST
+        applies_to:
+          include:
+            - "**/*.ts"
 `);
 			await writeRuleDocument(
 				repositoryRoot,
 				"knowledge/decisions/example-rule.md",
 				`title: The example rule statement.
 status: stable
-applies_to:
-  include:
-    - "**/*.ts"
 `,
 			);
 			await runGit(["init", "-q", "-b", "main"], repositoryRoot);

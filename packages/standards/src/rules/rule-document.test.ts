@@ -8,9 +8,6 @@ describe("parseRuleDocument", () => {
 title: Use prompt caching
 description: Cache repeated prompt prefixes.
 status: stable
-applies_to:
-  include:
-    - "src/**/*.ts"
 ---
 
 Prompt caching cuts latency and cost.
@@ -27,9 +24,6 @@ More prose.
 			"Cache repeated prompt prefixes.",
 		);
 		assert.equal(parsed.frontmatter.status, "stable");
-		assert.deepEqual(parsed.frontmatter.applies_to, {
-			include: ["src/**/*.ts"],
-		});
 		assert.ok(parsed.body.startsWith("Prompt caching cuts latency and cost."));
 		assert.ok(parsed.body.endsWith("More prose."));
 	});
@@ -105,16 +99,12 @@ Body.
 		assert.match(parsed.problem, /Invalid frontmatter field 'adr_status'/);
 	});
 
-	it("rejects a malformed applies_to filter", () => {
-		for (const appliesTo of [
-			"applies_to: src/**/*.ts",
-			'applies_to:\n  include:\n    - "/absolute/*.ts"',
-			"applies_to:\n  paths:\n    - src/**/*.ts",
-		]) {
-			const parsed = parseRuleDocument(`---\n${appliesTo}\n---\nBody.\n`);
+	it("accepts and ignores a frontmatter applies_to field", () => {
+		const parsed = parseRuleDocument(
+			'---\ntitle: A rule\napplies_to:\n  include:\n    - "src/**/*.ts"\n---\nBody.\n',
+		);
 
-			assert.ok(!parsed.ok, appliesTo);
-			assert.match(parsed.problem, /applies_to/);
-		}
+		assert.ok(parsed.ok);
+		assert.ok(!("applies_to" in parsed.frontmatter));
 	});
 });

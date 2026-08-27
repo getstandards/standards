@@ -39,7 +39,7 @@ sources:
 					folder: "engineering-guides",
 					level: "SHOULD",
 					documents: { exclude: ["templates/**"] },
-					applies_to: { include: ["src/**"] },
+					applies_to: [{ include: ["src/**"] }],
 				},
 			],
 		});
@@ -50,6 +50,51 @@ sources:
 			id_prefix: "shared",
 			folders: [{ folder: "reliability", level: "MUST" }],
 		});
+	});
+
+	it("normalizes the list form of applies_to", () => {
+		const configuration = loadConfiguration(`
+version: 2
+sources:
+  - path: knowledge
+    folders:
+      practices:
+        level: MUST
+        applies_to:
+          - documents: clickhouse/**
+            include:
+              - apps/analytics/**
+          - documents:
+              - tidb/**
+              - mysql/**
+            exclude:
+              - "**/*.md"
+          - include:
+              - src/**
+`);
+
+		assert.deepEqual(configuration.sources[0]?.folders[0]?.applies_to, [
+			{ documents: ["clickhouse/**"], include: ["apps/analytics/**"] },
+			{ documents: ["tidb/**", "mysql/**"], exclude: ["**/*.md"] },
+			{ include: ["src/**"] },
+		]);
+	});
+
+	it("rejects an applies_to entry without include and exclude", () => {
+		assert.throws(
+			() =>
+				loadConfiguration(`
+version: 2
+sources:
+  - path: knowledge
+    folders:
+      practices:
+        level: MUST
+        applies_to:
+          - documents: clickhouse/**
+`),
+			ConfigurationLoadError,
+		);
 	});
 
 	it("adds an empty source list to a minimal configuration", () => {

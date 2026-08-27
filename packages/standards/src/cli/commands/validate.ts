@@ -1,15 +1,13 @@
 import { readFile, realpath } from "node:fs/promises";
-import path from "node:path";
 import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
 import { createImportProgressReporter } from "../../cache/import-progress.js";
 import { loadConfiguration } from "../../config/configuration-loader.js";
 import type { KnowledgeSource } from "../../config/configuration-schema.js";
 import { requirementLevels } from "../../config/configuration-schema.js";
-import { loadRules } from "../../rules/rules-loader.js";
+import type { Rule } from "../../rules/rule.js";
+import { findEntryFile, loadRules } from "../../rules/rules-loader.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
-
-const ENTRY_FILE_NAME = ".standards.yml";
 
 /** The label that names one knowledge source in the validation output. */
 function sourceLabel(source: KnowledgeSource): string {
@@ -22,6 +20,15 @@ function sourceLabel(source: KnowledgeSource): string {
 	const prefix =
 		source.id_prefix === undefined ? "" : ` (id_prefix: ${source.id_prefix})`;
 	return `${source.path}${prefix}`;
+}
+
+/** Render one rule's resolved applies_to scope on one line. */
+function formatAppliesTo(appliesTo: Rule["applies_to"]): string {
+	const include = appliesTo?.include?.join(", ") ?? "every file";
+	const exclude = appliesTo?.exclude;
+	return exclude === undefined
+		? include
+		: `${include} except ${exclude.join(", ")}`;
 }
 
 /** Validate and resolve the Standards configuration in the working directory. */
@@ -51,8 +58,10 @@ export async function runValidateCommand({
 		const repositoryRoot = await realpath(workingDirectory);
 		// The resolution succeeded, so re-reading the entry file for the source
 		// and folder listing cannot fail on the parse.
+		const entryFile = await findEntryFile(repositoryRoot);
 		const configuration = loadConfiguration(
-			await readFile(path.join(repositoryRoot, ENTRY_FILE_NAME), "utf8"),
+			await readFile(entryFile.path, "utf8"),
+			entryFile.name,
 		);
 		const levelSummary = requirementLevels
 			.map((level) => ({
@@ -67,7 +76,7 @@ export async function runValidateCommand({
 			"Standards configuration is valid.",
 			"",
 			`  Repository:     ${repositoryRoot}`,
-			`  Entry file:     ${ENTRY_FILE_NAME}`,
+			`  Entry file:     ${entryFile.name}`,
 		];
 
 		if (configuration.sources.length > 0) {
@@ -82,8 +91,11 @@ export async function runValidateCommand({
 
 		if (rules.length > 0) {
 			lines.push("", "Rules:");
+			const idWidth = Math.max(...rules.map((rule) => rule.id.length));
 			for (const rule of rules) {
-				lines.push(`  ${rule.level.padEnd(6)} ${rule.id}`);
+				lines.push(
+					`  ${rule.level.padEnd(6)} ${rule.id.padEnd(idWidth)}  ${formatAppliesTo(rule.applies_to)}`,
+				);
 			}
 		}
 

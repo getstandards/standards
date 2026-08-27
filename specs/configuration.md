@@ -18,8 +18,9 @@ document are to be interpreted as described by RFC 2119.
 
 ## Entry file
 
-The entry file MUST be named `.standards.yml` and MUST be at the repository
-root. It MUST contain one YAML document.
+The entry file MUST be at the repository root and MUST be named
+`.standards.yml` or `.standards.yaml`. It MUST contain one YAML document. A
+repository that contains both names MUST cause resolution to fail.
 
 A minimal configuration is:
 
@@ -168,7 +169,7 @@ folders:
 | --- | --- | --- | --- |
 | `level` | string | Yes | `MUST` (blocking) or `SHOULD` (advisory). |
 | `documents` | object | No | An `include`/`exclude` glob filter, relative to the folder, that selects which documents become rules. The default `include` is `**/*.md` and the default `exclude` is empty; exclusion wins. |
-| `applies_to` | object | No | An `include`/`exclude` glob filter, relative to the target repository root, that scopes every rule in the folder to a subset of files. |
+| `applies_to` | object or array | No | An `include`/`exclude` glob filter, relative to the target repository root, that scopes rules to a subset of files. The object form scopes every rule in the folder; the list form scopes groups of documents (see Target repository applicability). |
 
 The short form is equivalent to an expanded form that contains only `level`.
 The folder name has no required meaning: Standards MUST NOT infer a level from
@@ -195,10 +196,45 @@ change.
 
 ### Target repository applicability
 
-The folder mapping `applies_to` filter scopes every rule in that folder to a
-subset of target repository files. A knowledge document can also carry the
-`applies_to` frontmatter extension. When both filters exist, both MUST match,
-and exclusion in either filter wins.
+The folder mapping `applies_to` filter scopes rules to a subset of target
+repository files. The configuration is the only place that sets file
+applicability: which files a rule applies to depends on the target repository
+layout, so a knowledge document MUST NOT decide it. A frontmatter `applies_to`
+field is ignored (see Frontmatter fields that Standards reads).
+
+`applies_to` accepts two forms. The object form scopes every rule in the
+folder with one filter:
+
+```yaml
+applies_to:
+  include:
+    - src/**
+```
+
+The list form scopes groups of documents inside the folder. Each entry names
+the documents it scopes with a `documents` glob, relative to the mapped
+folder, and carries its own `include`/`exclude` filter:
+
+```yaml
+applies_to:
+  - documents: clickhouse/**
+    include:
+      - apps/analytics/**
+  - documents: tidb/**
+    include:
+      - services/storage/**
+  - include:
+      - src/**
+```
+
+For each rule document, the first entry whose `documents` glob matches the
+document's folder-relative path decides the rule's filter; later entries are
+not read. An entry without `documents` matches every document. A document
+that no entry matches gets no filter, so its rule applies to every file.
+
+`documents` accepts one glob or a non-empty list of globs. An entry MUST
+contain `include`, `exclude`, or both. The object form is equivalent to a
+one-entry list without `documents`.
 
 ### Requirement levels
 
@@ -226,7 +262,6 @@ review.
 | `status` | `stable` (the OKF default), so the document is enforced. | Lifecycle filter. Only `stable` documents are enforced. |
 | `adr_status` | No constraint. | Lifecycle filter. When present, only `accepted` is enforced. |
 | `superseded_by` | None. | Marks a superseded document, which is not enforced (see Superseded documents). |
-| `applies_to` | Every file. | The `include`/`exclude` glob filter (see File applicability). |
 
 All other OKF fields (`type`, `tags`, `generated`, `verified`, `stale_after`,
 `sources`) and unknown fields MUST be accepted and ignored. The runtime rule
@@ -234,9 +269,10 @@ carries only the fields that selection, review, or reporting use; it does not
 carry `type`, `tags`, or aliases. Standards MUST NOT reject a document because
 an unused field has a shape Standards does not consume.
 
-`applies_to` is not an OKF field. Standards defines it as an extension. OKF
-tooling ignores unknown frontmatter keys, so the field is additive and safe.
-Bundle authors add it to the documents that need a narrower scope.
+A frontmatter `applies_to` field is one of these ignored fields. File
+applicability is a consumer decision, so it lives only in the folder mapping
+(see Target repository applicability). A bundle stays portable: two
+repositories can consume the same document and scope it to different files.
 
 ### Invalid documents
 
@@ -248,7 +284,6 @@ Cases:
 - no frontmatter block, or frontmatter that is not valid YAML,
 - a frontmatter value with a wrong type (for example `title` as a list),
 - an unknown `status` or `adr_status` value,
-- a malformed `applies_to` (wrong shape or invalid glob),
 - a derived `id` that does not match the id grammar.
 
 A skipped document MUST NOT fail the run. Sources follow a branch, so a single
@@ -321,7 +356,7 @@ warnings.
 
 ## File applicability
 
-`applies_to` has this shape:
+The folder mapping `applies_to` filter has this shape:
 
 ```yaml
 applies_to:
@@ -336,6 +371,9 @@ applies_to:
 | --- | --- | --- | --- |
 | `include` | non-empty array of strings | No | Globs that select paths. The default is `**/*`. |
 | `exclude` | non-empty array of strings | No | Globs that remove paths selected by `include`. The default is an empty array. |
+
+In the list form, each entry carries this same filter plus an optional
+`documents` glob (see Target repository applicability).
 
 Paths are repository-relative and use `/` as the separator on all operating
 systems. A path applies to a rule when it matches at least one `include` glob
@@ -354,8 +392,7 @@ Globs use these constructs:
 
 Globs MUST NOT depend on the host operating system. Matching is case-sensitive.
 Paths MUST NOT start with `/`, contain `.` or `..` path segments, or contain a
-backslash. In a document, invalid or unsupported glob syntax makes the
-document invalid (see Invalid documents).
+backslash. Invalid or unsupported glob syntax makes the configuration invalid.
 
 File applicability is an initial filter, not proof that a rule is relevant or
 compliant. The review agent can discard a selected rule after it examines the

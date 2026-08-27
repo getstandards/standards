@@ -40,6 +40,9 @@ function resolutionNextAction(message: string): string {
 	if (message.includes(".standards.yml") && message.includes("Cannot read")) {
 		return "Create '.standards.yml' at the repository root and define configuration version 2.";
 	}
+	if (message.includes("Keep one entry file")) {
+		return "Remove '.standards.yml' or '.standards.yaml' so one entry file remains.";
+	}
 	if (message.includes("does not exist in knowledge source")) {
 		return "Map a 'folder' that exists in the knowledge source, or remove the mapping.";
 	}

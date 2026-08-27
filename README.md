@@ -28,7 +28,11 @@ sources:
   - path: knowledge
     folders:
       decisions: MUST
-      practices: SHOULD
+      practices:
+        level: SHOULD
+        applies_to:
+          include:
+            - src/api/**/*.ts
 ```
 
 A document like `knowledge/practices/api/paginate-unbounded-collections.md`:
@@ -37,9 +41,6 @@ A document like `knowledge/practices/api/paginate-unbounded-collections.md`:
 ---
 title: An endpoint that returns an unbounded collection accepts pagination parameters
 description: Unbounded responses degrade as the data grows.
-applies_to:
-  include:
-    - src/api/**/*.ts
 ---
 
 Unbounded responses degrade as the data grows, until the endpoint times out.

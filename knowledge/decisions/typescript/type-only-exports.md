@@ -2,11 +2,6 @@
 title: Export types with `export type`, never with a plain `export`
 description: A plain `export` that re-exports a type breaks the Bun build.
 status: stable
-applies_to:
-  include:
-    - "packages/standards/src/**/*.ts"
-  exclude:
-    - "**/*.d.ts"
 ---
 
 Bun does not accept a plain `export` that re-exports a type together with a

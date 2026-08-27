@@ -5,7 +5,7 @@ Canonical words used across Standards code and documentation.
 ## Terms
 
 - **action output** — One value the action sets for later workflow steps: `conclusion`, `blocking-count`, `warning-count`, `total-cost`, or `report-file`.
-- **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files. A folder mapping sets it for every rule in a folder; a knowledge document can also set it as a frontmatter extension field. It is not an OKF field.
+- **applies_to** — The `include`/`exclude` glob filter that scopes a rule to a subset of repository files. Only a folder mapping sets it: file applicability is a consumer decision, so a frontmatter `applies_to` field is ignored. The object form scopes every rule in the folder; the list form scopes groups of documents through per-entry `documents` globs.
 - **branch** — The branch a Git knowledge source follows, set by `branch` without the `refs/heads/` prefix. When absent, the loader uses the repository's default branch. The loader resolves it to its current commit at the start of every run.
 - **bundle** — One directory tree of knowledge documents in the Open Knowledge Format. A knowledge source holds one bundle. OKF does not specify folder names, so the folder mapping states which folders hold rules.
 - **cache read tokens** — The input tokens of a step that the provider served from its prompt cache, reported as `cache_read_tokens`.
@@ -16,7 +16,7 @@ Canonical words used across Standards code and documentation.
 - **cost basis** — What the review's cost number means: `charged` (an API key credential), `list_price_estimate` (a subscription credential), or `none` (every selected model has a zero cost).
 - **derived id** — The rule `id` computed from a document path relative to its mapped folder: the `.md` extension removed and `/` replaced with `.`.
 - **diagnostic** — A structured, human-actionable error report with category, source, field, problem, and next action.
-- **entry file** — The `.standards.yml` at the repository root that starts resolution.
+- **entry file** — The `.standards.yml` or `.standards.yaml` at the repository root that starts resolution. A repository holds at most one.
 - **finding** — One reported rule violation: `rule`, `path`, `lines`, `evidence`, `reason`, an optional `suggestion`, and an optional `suggested_change`.
 - **finding comment** — One pull request review comment that carries one confirmed finding on its `path` and `lines`, with an applicable suggested change when one is present, found by the `<!-- standards:finding:v1:<fingerprint> -->` marker on its first line.
 - **fingerprint** — The stable identifier of a finding whose comment is no longer mapped to the current diff: the first sixteen characters of the lowercase hex SHA-256 digest of the rule `id`, the `path`, and the source anchor, joined with a newline.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -250,13 +250,10 @@ sources:
 		);
 	});
 
-	it("intersects folder-level and document-level applicability", async () => {
+	it("scopes a rule with the folder mapping applies_to filter", async () => {
 		const repositoryRoot = await createLocalConsumer(
 			{
-				"decisions/scoped.md": document(
-					"Scoped",
-					"applies_to:\n  exclude:\n    - src/**/*.test.ts\n",
-				),
+				"decisions/scoped.md": document("Scoped"),
 			},
 			`version: 2
 sources:
@@ -267,6 +264,8 @@ sources:
         applies_to:
           include:
             - src/**
+          exclude:
+            - src/**/*.test.ts
 `,
 		);
 
@@ -276,6 +275,96 @@ sources:
 			include: ["src/**"],
 			exclude: ["src/**/*.test.ts"],
 		});
+	});
+
+	it("scopes document groups with the applies_to list form", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"practices/clickhouse/no-final.md": document("No FINAL"),
+				"practices/clickhouse/llm/prompts.md": document("Prompts"),
+				"practices/tidb/schema.md": document("Schema"),
+				"practices/naming.md": document("Naming"),
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    folders:
+      practices:
+        level: MUST
+        applies_to:
+          - documents: clickhouse/llm/**
+            include:
+              - services/llm/**
+          - documents: clickhouse/**
+            include:
+              - apps/analytics/**
+`,
+		);
+
+		const { rules, warnings } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(warnings, []);
+		const appliesToById = new Map(
+			rules.map((rule) => [rule.id, rule.applies_to]),
+		);
+		// The first matching entry wins, so the narrower glob must come first.
+		assert.deepEqual(appliesToById.get("clickhouse.llm.prompts"), {
+			include: ["services/llm/**"],
+		});
+		assert.deepEqual(appliesToById.get("clickhouse.no-final"), {
+			include: ["apps/analytics/**"],
+		});
+		// A document that no entry matches gets no filter.
+		assert.equal(appliesToById.get("tidb.schema"), undefined);
+		assert.equal(appliesToById.get("naming"), undefined);
+	});
+
+	it("applies an entry without documents to every document", async () => {
+		const repositoryRoot = await createLocalConsumer(
+			{
+				"practices/clickhouse/no-final.md": document("No FINAL"),
+				"practices/naming.md": document("Naming"),
+			},
+			`version: 2
+sources:
+  - path: ./knowledge
+    folders:
+      practices:
+        level: MUST
+        applies_to:
+          - documents: clickhouse/**
+            include:
+              - apps/analytics/**
+          - include:
+              - src/**
+`,
+		);
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		const appliesToById = new Map(
+			rules.map((rule) => [rule.id, rule.applies_to]),
+		);
+		assert.deepEqual(appliesToById.get("clickhouse.no-final"), {
+			include: ["apps/analytics/**"],
+		});
+		assert.deepEqual(appliesToById.get("naming"), {
+			include: ["src/**"],
+		});
+	});
+
+	it("ignores an applies_to frontmatter field", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/scoped.md": document(
+				"Scoped",
+				"applies_to:\n  include:\n    - src/**\n",
+			),
+		});
+
+		const { rules, warnings } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(warnings, []);
+		assert.equal(rules[0]?.applies_to, undefined);
 	});
 
 	it("adds the id prefix to every derived id", async () => {
@@ -387,6 +476,39 @@ sources:
 
 		await expect(loadRules(repositoryRoot)).rejects.toThrow(
 			ConfigurationResolutionError,
+		);
+	});
+
+	it("discovers a .standards.yaml entry file", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/rule.md": document("Rule"),
+		});
+		const configuration = path.join(repositoryRoot, ".standards.yml");
+		await writeFile(
+			path.join(repositoryRoot, ".standards.yaml"),
+			await readFile(configuration, "utf8"),
+		);
+		await rm(configuration);
+
+		const { rules } = await loadRules(repositoryRoot);
+
+		assert.deepEqual(
+			rules.map(({ id }) => id),
+			["rule"],
+		);
+	});
+
+	it("fails when both entry files exist", async () => {
+		const repositoryRoot = await createLocalConsumer({
+			"decisions/rule.md": document("Rule"),
+		});
+		await writeFile(
+			path.join(repositoryRoot, ".standards.yaml"),
+			"version: 2\n",
+		);
+
+		await expect(loadRules(repositoryRoot)).rejects.toThrow(
+			/Both '\.standards\.yml' and '\.standards\.yaml' exist/,
 		);
 	});
 

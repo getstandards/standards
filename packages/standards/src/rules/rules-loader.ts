@@ -10,6 +10,7 @@ import type { ImportProgressReporter } from "../cache/import-progress.js";
 import { loadConfiguration } from "../config/configuration-loader.js";
 import type {
 	AppliesTo,
+	AppliesToEntry,
 	DocumentFilter,
 	FolderMapping,
 	GitKnowledgeSource,
@@ -22,7 +23,8 @@ import type { Rule } from "./rule.js";
 import type { RuleFrontmatter } from "./rule-document.js";
 import { parseRuleDocument } from "./rule-document.js";
 
-const ENTRY_FILE_NAME = ".standards.yml";
+/** The entry file names, in discovery order (specs/configuration.md). */
+export const ENTRY_FILE_NAMES = [".standards.yml", ".standards.yaml"] as const;
 
 /** An error found while resolving the knowledge sources of a configuration. */
 export class ConfigurationResolutionError extends Error {
@@ -209,6 +211,45 @@ async function resolveBranchCommit(
 	};
 }
 
+/** The discovered entry file of a repository. */
+export interface EntryFile {
+	name: string;
+	path: string;
+}
+
+/**
+ * Find the entry file at the repository root: `.standards.yml` or
+ * `.standards.yaml`. Two entry files are a configuration error. When none
+ * exists, it returns the `.standards.yml` candidate, so the caller's read
+ * fails with a clear message (specs/configuration.md).
+ */
+export async function findEntryFile(
+	repositoryRoot: string,
+): Promise<EntryFile> {
+	const present: EntryFile[] = [];
+	for (const name of ENTRY_FILE_NAMES) {
+		const candidate = { name, path: path.join(repositoryRoot, name) };
+		try {
+			if ((await stat(candidate.path)).isFile()) {
+				present.push(candidate);
+			}
+		} catch {
+			// A missing candidate is not an error.
+		}
+	}
+	if (present.length > 1) {
+		throw new ConfigurationResolutionError(
+			"Both '.standards.yml' and '.standards.yaml' exist at the repository root. Keep one entry file.",
+		);
+	}
+	return (
+		present[0] ?? {
+			name: ENTRY_FILE_NAMES[0],
+			path: path.join(repositoryRoot, ENTRY_FILE_NAMES[0]),
+		}
+	);
+}
+
 /** One knowledge document discovered under a mapped folder. */
 interface DiscoveredDocument {
 	absolutePath: string;
@@ -264,39 +305,31 @@ function compileDocumentFilter(
 }
 
 /**
- * Combine the folder mapping `applies_to` with the document frontmatter
- * `applies_to` into one filter. Both filters must match, so the excludes are
- * unioned; an absent side imposes no constraint (specs/configuration.md).
+ * Select the `applies_to` filter of one document: the first entry whose
+ * `documents` globs match the folder-relative path decides the filter. A
+ * document that no entry matches gets no filter
+ * (specs/configuration.md target repository applicability).
  */
-function combineAppliesTo(
-	folderFilter: AppliesTo | undefined,
-	documentFilter: AppliesTo | undefined,
+function selectAppliesTo(
+	entries: readonly AppliesToEntry[] | undefined,
+	folderPath: string,
 ): AppliesTo | undefined {
-	if (folderFilter === undefined) {
-		return documentFilter;
+	const entry = entries?.find(
+		(candidate) =>
+			candidate.documents === undefined ||
+			picomatch(candidate.documents, GLOB_MATCH_OPTIONS)(folderPath),
+	);
+	if (entry === undefined) {
+		return undefined;
 	}
-	if (documentFilter === undefined) {
-		return folderFilter;
+	const filter: AppliesTo = {};
+	if (entry.include !== undefined) {
+		filter.include = entry.include;
 	}
-	const include = mergeGlobs(folderFilter.include, documentFilter.include);
-	const exclude = mergeGlobs(folderFilter.exclude, documentFilter.exclude);
-	const combined: AppliesTo = {};
-	if (include !== undefined) {
-		combined.include = include;
+	if (entry.exclude !== undefined) {
+		filter.exclude = entry.exclude;
 	}
-	if (exclude !== undefined) {
-		combined.exclude = exclude;
-	}
-	return combined;
-}
-
-/** Merge two optional glob lists into one deduplicated list, or undefined. */
-function mergeGlobs(
-	first: readonly string[] | undefined,
-	second: readonly string[] | undefined,
-): string[] | undefined {
-	const merged = [...new Set([...(first ?? []), ...(second ?? [])])];
-	return merged.length === 0 ? undefined : merged;
+	return filter;
 }
 
 /** Derive a rule id from a document path relative to its mapped folder. */
@@ -423,9 +456,9 @@ async function loadBundleRules(
 		if (frontmatter.description !== undefined) {
 			rule.description = frontmatter.description;
 		}
-		const appliesTo = combineAppliesTo(
+		const appliesTo = selectAppliesTo(
 			document.mapping.applies_to,
-			frontmatter.applies_to,
+			document.folderPath,
 		);
 		if (appliesTo !== undefined) {
 			rule.applies_to = appliesTo;
@@ -451,16 +484,16 @@ export async function loadRules(
 	const canonicalRepositoryRoot =
 		await canonicalizeRepositoryRoot(repositoryRoot);
 
-	const entryPath = path.join(canonicalRepositoryRoot, ENTRY_FILE_NAME);
+	const entryFile = await findEntryFile(canonicalRepositoryRoot);
 	let entryText: string;
 	try {
-		entryText = await readFile(entryPath, "utf8");
+		entryText = await readFile(entryFile.path, "utf8");
 	} catch (error) {
 		throw new ConfigurationResolutionError(
-			`Cannot read configuration '${ENTRY_FILE_NAME}': ${errorMessage(error)}`,
+			`Cannot read configuration '${entryFile.name}': ${errorMessage(error)}`,
 		);
 	}
-	const configuration = loadConfiguration(entryText);
+	const configuration = loadConfiguration(entryText, entryFile.name);
 
 	const ownsGitSourceStore = options.gitSourceStore === undefined;
 	const gitSourceStore =

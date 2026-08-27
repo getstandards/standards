@@ -1,5 +1,4 @@
 import { z } from "zod/v4";
-import { appliesToSchema } from "../config/configuration-schema.js";
 import { errorMessage } from "../utils/errors.js";
 import { parseSingleYamlDocument } from "../utils/yaml.js";
 
@@ -28,7 +27,6 @@ const frontmatterSchema = z.object({
 	status: z.enum(documentStatuses).default("stable"),
 	adr_status: z.enum(adrStatuses).optional(),
 	superseded_by: z.string().min(1).optional(),
-	applies_to: appliesToSchema.optional(),
 });
 
 /** The validated frontmatter of one knowledge document. */

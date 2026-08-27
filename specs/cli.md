@@ -152,19 +152,22 @@ Without a terminal, the command MUST NOT write an empty or assumed
 configuration. It MUST report that interactive input is required, leave the
 repository unchanged, and exit with status `1`.
 
-When `.standards.yml` already exists, the command MUST print a diagnostic and
-exit with status `1`. It MUST NOT modify the existing file.
+When an entry file (`.standards.yml` or `.standards.yaml`) already exists, the
+command MUST print a diagnostic and exit with status `1`. It MUST NOT modify
+the existing file.
 
 ## `validate`
 
-`standards validate` MUST load `.standards.yml` from the current working
+`standards validate` MUST load the entry file from the current working
 directory and resolve its complete configuration graph as defined in
 [Standards configuration format](./configuration.md).
 
 On success, the command MUST print the canonical repository path and the
 entry-file name. It MUST list each knowledge source with its mapped folders and
-their levels, and each discovered rule with its derived id and level, so the
-user can confirm exactly which documents became rules. It MUST print the
+their levels, and each discovered rule with its derived id, level, and resolved
+`applies_to` scope, so the user can confirm exactly which documents became
+rules and which files each rule judges. An unscoped rule MUST show that it
+applies to every file. It MUST print the
 resolved commit of each Git source, the warnings for skipped knowledge
 documents, the number of resolved rules, and the rule counts grouped by
 requirement level. It MUST exit with status `0`.
@@ -189,11 +192,13 @@ The command MUST NOT modify the configuration or any other repository file.
 `standards rules` lists the resolved rule set, so that a user can audit which
 rules apply to a repository and where each one came from.
 
-The command MUST load `.standards.yml` from the current working directory and
+The command MUST load the entry file from the current working directory and
 resolve its complete configuration graph, exactly as `validate` does. It MUST
 print every resolved rule in resolution order with:
 
 - The rule `id` and `level`.
+- The rule's resolved `applies_to` scope, or that the rule applies to every
+  file.
 - The rule's source: the document path for a local source, or the repository,
   `branch`, resolved commit, and document path for a Git source.
 
@@ -330,7 +335,7 @@ directory. It MUST report the removed location and exit with status `0`. If the
 cache directory does not exist, it MUST report that state and exit with status
 `0`.
 
-`standards cache prune` MUST load `.standards.yml` from the current working
+`standards cache prune` MUST load the entry file from the current working
 directory, compute the commit object IDs that the resolved knowledge sources
 reference, and remove every source cache entry whose commit is not in that
 set. It MUST report the number of removed entries and exit with status `0`.

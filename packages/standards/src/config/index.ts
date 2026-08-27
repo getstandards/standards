@@ -4,6 +4,7 @@ export {
 } from "./configuration-loader.js";
 export type {
 	AppliesTo,
+	AppliesToEntry,
 	Configuration,
 	DocumentFilter,
 	FolderMapping,
@@ -13,6 +14,7 @@ export type {
 	RequirementLevel,
 } from "./configuration-schema.js";
 export {
+	appliesToEntrySchema,
 	appliesToSchema,
 	branchNameSchema,
 	commitObjectIdSchema,

@@ -255,6 +255,41 @@ export const appliesToSchema = z
 export type AppliesTo = z.infer<typeof appliesToSchema>;
 
 /**
+ * One list-form `applies_to` entry: the filter for the documents that the
+ * folder-relative `documents` globs select. An absent `documents` matches
+ * every document (specs/configuration.md).
+ */
+export const appliesToEntrySchema = z
+	.object({
+		documents: z
+			.union([globSchema, z.array(globSchema).min(1)])
+			.transform((globs) => (Array.isArray(globs) ? globs : [globs]))
+			.optional(),
+		include: z.array(globSchema).min(1).optional(),
+		exclude: z.array(globSchema).min(1).optional(),
+	})
+	.strict()
+	.refine(
+		(entry) => entry.include !== undefined || entry.exclude !== undefined,
+		"Expected 'include', 'exclude', or both in an applies_to entry.",
+	);
+
+/** A validated list-form `applies_to` entry with normalized globs. */
+export type AppliesToEntry = z.infer<typeof appliesToEntrySchema>;
+
+/**
+ * The `applies_to` field of a folder mapping: one filter for every rule in
+ * the folder (object form) or per-document-group entries (list form). It
+ * normalizes to a list of entries; the object form is a one-entry list
+ * without `documents` (specs/configuration.md).
+ */
+const appliesToFieldSchema = z
+	.union([appliesToSchema, z.array(appliesToEntrySchema).min(1)])
+	.transform((appliesTo): AppliesToEntry[] =>
+		Array.isArray(appliesTo) ? appliesTo : [appliesTo],
+	);
+
+/**
  * The `include`/`exclude` glob filter that selects knowledge documents inside a
  * mapped folder. Its globs are relative to the mapped folder
  * (specs/configuration.md).
@@ -298,7 +333,7 @@ const expandedFolderMappingSchema = z
 	.object({
 		level: z.enum(requirementLevels),
 		documents: documentFilterSchema.optional(),
-		applies_to: appliesToSchema.optional(),
+		applies_to: appliesToFieldSchema.optional(),
 	})
 	.strict();
 
@@ -316,7 +351,7 @@ export interface FolderMapping {
 	folder: string;
 	level: RequirementLevel;
 	documents?: DocumentFilter;
-	applies_to?: AppliesTo;
+	applies_to?: AppliesToEntry[];
 }
 
 /** Return true when one mapped folder contains or equals another. */

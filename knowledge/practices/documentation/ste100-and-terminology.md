@@ -4,9 +4,6 @@ title: >-
   canonical terms from TERMINOLOGY.md
 description: A shared vocabulary keeps the domain model stable.
 status: stable
-applies_to:
-  include:
-    - "**/*.md"
 ---
 
 A shared vocabulary keeps the domain model stable. Inventing synonyms for a

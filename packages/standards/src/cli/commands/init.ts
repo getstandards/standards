@@ -5,6 +5,7 @@ import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import figures from "figures";
 import { stringify } from "yaml";
 import { configurationSchema } from "../../config/configuration-schema.js";
+import { ENTRY_FILE_NAMES } from "../../rules/rules-loader.js";
 import { errorMessage } from "../../utils/errors.js";
 import type { CommandContext } from "../cli-context.js";
 
@@ -320,15 +321,17 @@ export async function runInitCommand(
 	const { output, workingDirectory, interactive } = context;
 	const entryPath = path.join(workingDirectory, ENTRY_FILE_NAME);
 
-	if (await pathExists(entryPath)) {
-		output.error(`Standards init could not run.
+	for (const name of ENTRY_FILE_NAMES) {
+		if (await pathExists(path.join(workingDirectory, name))) {
+			output.error(`Standards init could not run.
 
 Problem:
-  '.standards.yml' already exists in ${workingDirectory}.
+  '${name}' already exists in ${workingDirectory}.
 
 Next action:
   Edit the existing file, or run 'standards init' in a different directory.`);
-		return 1;
+			return 1;
+		}
 	}
 
 	if (!interactive) {
