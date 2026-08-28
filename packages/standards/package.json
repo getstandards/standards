@@ -40,18 +40,17 @@
 	],
 	"dependencies": {
 		"@earendil-works/pi-ai": "^0.84.2",
+		"@getstandards/core": "workspace:*",
 		"@inquirer/prompts": "^8.5.2",
 		"@octokit/rest": "^22.0.1",
 		"chalk": "^6.0.0",
 		"figures": "^6.1.0",
-		"picomatch": "^4.0.5",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.8",
 		"@types/node": "^26.2.0",
-		"@types/picomatch": "^4.0.3",
 		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"

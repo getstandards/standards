@@ -1,8 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runGit } from "@getstandards/core/internal";
 import { afterEach, describe, expect, it } from "vitest";
-import { runGit } from "../utils/git.js";
 import { loadActionContext, resolveReviewRevisions } from "./action-context.js";
 
 const temporaryDirectories: string[] = [];

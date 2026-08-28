@@ -8,8 +8,8 @@
 		"pnpm": "^11.0.0"
 	},
 	"scripts": {
-		"build": "pnpm --filter @getstandards/standards build",
-		"build:action": "pnpm --filter @getstandards/standards build:action",
+		"build": "pnpm --filter \"@getstandards/standards...\" build",
+		"build:action": "pnpm --filter @getstandards/core build && pnpm --filter @getstandards/standards build:action",
 		"check": "pnpm -r check",
 		"test": "pnpm -r test",
 		"docs:dev": "pnpm --filter standards-docs dev",

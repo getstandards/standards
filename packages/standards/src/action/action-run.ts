@@ -1,16 +1,19 @@
 import { appendFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+	loadRules,
+	type ReportedFinding,
+	type Resolution,
+	type ReviewReport,
+	runReview,
+} from "@getstandards/core";
+import { createTemporaryGitSourceStore } from "@getstandards/core/internal";
 import type { Octokit } from "@octokit/rest";
-import { createTemporaryGitSourceStore } from "../cache/git-source-cache.js";
 import { formatReviewFailure } from "../cli/commands/review.js";
 import { renderReviewReportText } from "../cli/commands/review-report-text.js";
 import { formatValidationError } from "../cli/commands/validate-diagnostic.js";
 import { createAutomationModels } from "../credentials/models-runtime.js";
-import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
-import { runReview } from "../review/run-review.js";
-import type { Resolution } from "../rules/rules-loader.js";
-import { loadRules } from "../rules/rules-loader.js";
 import type { ActionContext } from "./action-context.js";
 import {
 	ActionContextError,

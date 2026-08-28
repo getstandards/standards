@@ -1,11 +1,13 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+	configurationSchema,
+	parseSingleYamlDocument,
+} from "@getstandards/core/internal";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configurationSchema } from "../../config/configuration-schema.js";
-import { parseSingleYamlDocument } from "../../utils/yaml.js";
 import type { CliOutput, CommandContext } from "../cli-context.js";
 import type { ScanResult } from "./init.js";
 import { runInitCommand } from "./init.js";

@@ -37,12 +37,17 @@ jobs:
       - name: Build
         run: mise run build
 
-      # Authentication uses npm trusted publishing (OIDC), configured on the
-      # package settings page on npmjs.com. No token is needed, and npm
-      # attaches provenance automatically.
+      # `pnpm pack` replaces the `workspace:*` dependency ranges with the
+      # concrete version, which `npm publish` does not do. Publishing the
+      # packed tarball keeps npm trusted publishing (OIDC) and provenance,
+      # configured on each package settings page on npmjs.com, so no token is
+      # needed. A dependency is published before the packages that need it.
       - name: Publish to npm
-        working-directory: packages/standards
-        run: npm publish
+        run: |
+          for package in core standards pi; do
+            tarball="$(pnpm --filter "@getstandards/${package}" pack --pack-destination "${RUNNER_TEMP}" | tail -n 1)"
+            npm publish "${tarball}"
+          done
 
   publish-action:
     name: Publish Action

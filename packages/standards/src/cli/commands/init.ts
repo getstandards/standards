@@ -1,12 +1,14 @@
 import type { Dirent } from "node:fs";
 import { access, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+	configurationSchema,
+	ENTRY_FILE_NAMES,
+	errorMessage,
+} from "@getstandards/core/internal";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import figures from "figures";
 import { stringify } from "yaml";
-import { configurationSchema } from "../../config/configuration-schema.js";
-import { ENTRY_FILE_NAMES } from "../../rules/rules-loader.js";
-import { errorMessage } from "../../utils/errors.js";
 import type { CommandContext } from "../cli-context.js";
 
 const ENTRY_FILE_NAME = ".standards.yml";

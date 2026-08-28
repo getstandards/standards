@@ -1,4 +1,4 @@
-import { type Api, type Model, type Models, Type } from "@earendil-works/pi-ai";
+import { type Api, type Model, Type } from "@earendil-works/pi-ai";
 import type { Rule } from "../rules/rule.js";
 import {
 	addInvocationUsage,
@@ -8,6 +8,7 @@ import {
 import type { Finding } from "./finding.js";
 import { readHeadFileLines, readHeadRegion } from "./read-head-file.js";
 import { runReviewAgent } from "./review-agent.js";
+import type { ReviewModels } from "./review-models.js";
 import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
 
 /** Lines of head-revision code kept on each side of a finding for the verifier. */
@@ -55,7 +56,7 @@ Return your result only through the report_verdict tool. Do not answer in prose.
 
 /** Everything the verification step needs to re-check the findings. */
 export interface VerificationInput {
-	models: Models;
+	models: ReviewModels;
 	model: Model<Api>;
 	findings: readonly Finding[];
 	ruleSet: readonly Rule[];

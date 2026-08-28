@@ -1,29 +1,41 @@
-import type { Models } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { describe, expect, it } from "vitest";
-import { createAutomationModels } from "../credentials/models-runtime.js";
 import { modelReferenceSchema } from "./model-reference.js";
 import {
 	ModelSelectionError,
 	resolveSelectedModels,
 } from "./model-selection.js";
+import type { ReviewModels } from "./review-models.js";
 
 /** Build a Models collection where only the named providers have a credential. */
-function modelsWithCredentials(...providers: string[]): Models {
+function modelsWithCredentials(...providers: string[]): ReviewModels {
 	const keyByProvider: Record<string, string> = {
 		anthropic: "ANTHROPIC_API_KEY",
 		openai: "OPENAI_API_KEY",
 	};
-	const allowedEnvironmentVariables = providers.map((provider) => {
-		const name = keyByProvider[provider];
-		if (name === undefined) {
-			throw new Error(`No API key variable mapped for provider '${provider}'.`);
-		}
-		return name;
-	});
-	const environment = Object.fromEntries(
-		allowedEnvironmentVariables.map((name) => [name, "test-key"]),
+	const allowed = new Set(
+		providers.map((provider) => {
+			const name = keyByProvider[provider];
+			if (name === undefined) {
+				throw new Error(
+					`No API key variable mapped for provider '${provider}'.`,
+				);
+			}
+			return name;
+		}),
 	);
-	return createAutomationModels({ environment, allowedEnvironmentVariables });
+	return builtinModels({
+		credentials: new InMemoryCredentialStore(),
+		authContext: {
+			async env(name) {
+				return allowed.has(name) ? "test-key" : undefined;
+			},
+			async fileExists() {
+				return false;
+			},
+		},
+	});
 }
 
 describe("resolveSelectedModels", () => {

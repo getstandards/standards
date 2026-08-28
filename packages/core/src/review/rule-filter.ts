@@ -1,4 +1,4 @@
-import type { Rule } from "../../rules/rule.js";
+import type { Rule } from "../rules/rule.js";
 
 /** A `--rule` or `--folder` value that names nothing in the resolved rule set. */
 export class ReviewRuleFilterError extends Error {

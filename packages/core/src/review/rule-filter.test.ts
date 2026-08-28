@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Rule } from "../../rules/rule.js";
-import { filterRuleSet, ReviewRuleFilterError } from "./review-rule-filter.js";
+import type { Rule } from "../rules/rule.js";
+import { filterRuleSet, ReviewRuleFilterError } from "./rule-filter.js";
 
 function rule(id: string, folder: string): Rule {
 	return {

@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
+import { errorMessage } from "@getstandards/core/internal";
 import { z } from "zod/v4";
-import { errorMessage } from "../utils/errors.js";
 import { renderCommandHelp } from "./cli-help.js";
 
 export const cliCommandSchema = z.enum([

@@ -1,4 +1,4 @@
-import type { RequirementLevel } from "../config/index.js";
+import type { RequirementLevel } from "../config/configuration-schema.js";
 import type { Rule } from "../rules/rule.js";
 import type { ResolvedGitSource, RuleWarning } from "../rules/rules-loader.js";
 import type { StepUsage } from "./agent-usage.js";

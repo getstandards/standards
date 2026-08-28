@@ -1,10 +1,4 @@
-import {
-	type Api,
-	type Model,
-	type Models,
-	type Static,
-	Type,
-} from "@earendil-works/pi-ai";
+import { type Api, type Model, type Static, Type } from "@earendil-works/pi-ai";
 import type { Rule } from "../rules/rule.js";
 import {
 	addInvocationUsage,
@@ -15,6 +9,7 @@ import type { ChangedFile } from "./change-diff.js";
 import type { EvaluationTask } from "./evaluation-plan.js";
 import type { Finding } from "./finding.js";
 import { runReviewAgent } from "./review-agent.js";
+import type { ReviewModels } from "./review-models.js";
 import type { FileSelection } from "./rule-selection.js";
 import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
 
@@ -109,7 +104,7 @@ Return your result only through the report_rule_verdicts tool. Do not answer in 
 
 /** Everything the evaluation step needs to run its agent invocations. */
 export interface EvaluationInput {
-	models: Models;
+	models: ReviewModels;
 	model: Model<Api>;
 	tasks: readonly EvaluationTask[];
 	headCheckoutDir: string;

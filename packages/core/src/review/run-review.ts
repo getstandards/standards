@@ -1,4 +1,4 @@
-import type { Api, Model, ModelCost, Models } from "@earendil-works/pi-ai";
+import type { Api, Model, ModelCost } from "@earendil-works/pi-ai";
 import type { Resolution } from "../rules/rules-loader.js";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import { emptyStepUsage } from "./agent-usage.js";
@@ -11,6 +11,7 @@ import {
 	type ModelSelectionOptions,
 	resolveSelectedModels,
 } from "./model-selection.js";
+import type { ReviewModels } from "./review-models.js";
 import {
 	buildReviewReport,
 	type CostBasis,
@@ -37,7 +38,7 @@ export interface RunReviewInput {
 	/** The resolution: the ordered rules, resolved Git commits, and warnings. */
 	resolution: Resolution;
 	/** The SDK model collection that runs the agent steps. */
-	models: Models;
+	models: ReviewModels;
 	/** Model references from the `standards review` options, when given. */
 	modelOptions?: ModelSelectionOptions;
 	environment: NodeJS.ProcessEnv;
@@ -204,7 +205,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
  * an estimate at the API list price. Otherwise an API key credential pays it.
  */
 async function resolveCostBasis(
-	models: Models,
+	models: ReviewModels,
 	stepModels: readonly Model<Api>[],
 ): Promise<CostBasis> {
 	if (stepModels.every((model) => isZeroCost(model.cost))) {
@@ -232,7 +233,7 @@ function isZeroCost(cost: ModelCost): boolean {
 
 /** Resolve a model reference to the SDK model, or fail with a clear diagnostic. */
 function resolveStepModel(
-	models: Models,
+	models: ReviewModels,
 	reference: ModelReference,
 ): Model<Api> {
 	const { provider, model } = parseModelReference(reference);

@@ -1,6 +1,5 @@
+import type { ModelReference, ReviewReport } from "@getstandards/core";
 import { describe, expect, it } from "vitest";
-import type { ModelReference } from "../../review/model-reference.js";
-import type { ReviewReport } from "../../review/review-report.js";
 import {
 	renderReviewReportTerminal,
 	renderReviewReportText,

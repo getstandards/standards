@@ -1,0 +1,61 @@
+{
+	"name": "@getstandards/pi",
+	"version": "0.2.0",
+	"description": "Run a Standards review from inside the pi coding agent",
+	"type": "module",
+	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
+	"publishConfig": {
+		"access": "public"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"scripts": {
+		"check": "biome check src package.json tsconfig.json && tsc --noEmit",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"standards",
+		"code-review",
+		"ai-code-review",
+		"engineering-standards",
+		"agent"
+	],
+	"dependencies": {
+		"@getstandards/core": "workspace:*"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.8",
+		"@earendil-works/pi-ai": "^0.84.2",
+		"@earendil-works/pi-coding-agent": "^0.84.3",
+		"@earendil-works/pi-tui": "^0.84.3",
+		"@types/node": "^26.2.0",
+		"typescript": "^7.0.2",
+		"vitest": "^4.1.10"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/getstandards/standards.git"
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/getstandards/standards/issues"
+	},
+	"engines": {
+		"node": "^24.11.0",
+		"pnpm": "^11.0.0"
+	},
+	"files": [
+		"src",
+		"!src/**/*.test.ts"
+	]
+}

@@ -1,4 +1,6 @@
 import type { Models } from "@earendil-works/pi-ai";
+import { DEFAULT_PROVIDER_MODELS } from "@getstandards/core";
+import { errorMessage } from "@getstandards/core/internal";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
 import {
@@ -7,8 +9,6 @@ import {
 	type ProviderCredentialReport,
 	readProviderCredentialStates,
 } from "../../credentials/provider-credential-state.js";
-import { DEFAULT_PROVIDER_MODELS } from "../../review/model-selection.js";
-import { errorMessage } from "../../utils/errors.js";
 import type { ModelsCliArgs } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";
 import { withoutDatedModelAliases } from "./dated-model-alias.js";

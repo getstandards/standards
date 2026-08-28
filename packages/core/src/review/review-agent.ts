@@ -4,7 +4,6 @@ import {
 	type Context,
 	isContextOverflow,
 	type Model,
-	type Models,
 	type RetryPolicy,
 	retryAssistantCall,
 	type Static,
@@ -16,6 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { AgentStep } from "./model-selection.js";
 import { executeReadHeadFile, readHeadFileTool } from "./read-head-file.js";
+import type { ReviewModels } from "./review-models.js";
 
 /** Retry bound for a transient provider failure during one agent invocation. */
 const DEFAULT_RETRY_POLICY: RetryPolicy = {
@@ -59,7 +59,7 @@ export class ReviewProviderError extends Error {
 
 /** Everything one review agent invocation needs to run its tool loop. */
 export interface ReviewAgentRequest<OutputToolSchema extends TSchema, Output> {
-	models: Models;
+	models: ReviewModels;
 	model: Model<Api>;
 	step: AgentStep;
 	systemPrompt: string;

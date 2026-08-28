@@ -2,7 +2,7 @@ import path from "node:path";
 import {
 	nonEmptyEnvironmentValue,
 	resolveHomeDirectory,
-} from "../utils/environment.js";
+} from "@getstandards/core/internal";
 
 /** Runtime values used to locate the Standards credential file. */
 export interface AuthFilePathOptions {

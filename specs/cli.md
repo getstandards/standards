@@ -9,7 +9,13 @@ resolve, list, and test its rules, manage model provider credentials, list
 the usable model references, and review changes from a terminal or automation
 environment.
 
-The CLI implementation MUST be defined in `src/cli`.
+The CLI implementation MUST be defined in `src/cli` of
+`@getstandards/standards`. The CLI runs resolution and review through
+`@getstandards/core`, defined in [Standards core library](./library.md). It
+owns credentials, terminal rendering, and exit statuses; it MUST NOT hold a
+copy of the pipeline. The change scope rules and the `--rule` and `--folder`
+filters specified below are implemented in the core, so every surface that
+runs a review compares the same change.
 
 ## Commands
 

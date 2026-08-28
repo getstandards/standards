@@ -1,5 +1,5 @@
+import type { ReviewStepProgress } from "@getstandards/core";
 import { chalkStderr } from "chalk";
-import type { ReviewStepProgress } from "../../review/step-progress.js";
 
 /** The spinner frames, cycled while a review's agent steps run. */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

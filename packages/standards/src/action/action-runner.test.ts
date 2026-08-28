@@ -1,6 +1,6 @@
+import type { ReportedFinding } from "@getstandards/core";
 import { Octokit } from "@octokit/rest";
 import { describe, expect, it } from "vitest";
-import type { ReportedFinding } from "../review/review-report.js";
 import {
 	createCheckRun,
 	createFindingComments,

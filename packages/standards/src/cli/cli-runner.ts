@@ -1,10 +1,10 @@
-import { formatStandardsSettingsDiagnostic } from "../settings/settings-diagnostic.js";
-import { resolveStandardsSettingsPath } from "../settings/settings-file-location.js";
 import {
+	formatStandardsSettingsDiagnostic,
 	readStandardsSettingsFile,
+	resolveStandardsSettingsPath,
+	type StandardsSettings,
 	StandardsSettingsLoadError,
-} from "../settings/settings-loader.js";
-import type { StandardsSettings } from "../settings/settings-schema.js";
+} from "@getstandards/core";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
 import { renderCommandHelp, renderHelp } from "./cli-help.js";

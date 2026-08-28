@@ -1,10 +1,10 @@
-import type { Models } from "@earendil-works/pi-ai";
 import type { StandardsSettings } from "../settings/settings-schema.js";
 import {
 	type ModelReference,
 	modelReferenceSchema,
 	parseModelReference,
 } from "./model-reference.js";
+import type { ReviewModels } from "./review-models.js";
 
 /** The two review steps that run on a selected model (specs/review.md). */
 export const AGENT_STEPS = ["evaluation", "verification"] as const;
@@ -44,7 +44,7 @@ export interface ModelSelectionInputs {
 	options?: ModelSelectionOptions;
 	environment: NodeJS.ProcessEnv;
 	settings?: StandardsSettings;
-	models: Models;
+	models: ReviewModels;
 }
 
 /** The resolved model reference for each agent step. */
@@ -140,7 +140,9 @@ Next action:
 }
 
 /** Return the set of provider ids that have a usable credential right now. */
-async function credentialedProviders(models: Models): Promise<Set<string>> {
+async function credentialedProviders(
+	models: ReviewModels,
+): Promise<Set<string>> {
 	const providers = models.getProviders();
 	const checks = await Promise.all(
 		providers.map(async (provider) => ({

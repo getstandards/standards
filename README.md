@@ -141,6 +141,14 @@ jobs:
 
 The Action runs the same pipeline as the CLI and posts the report as a check run and a pull request comment. See the [GitHub Action specification](specs/github.md) to use another provider.
 
+**6. Review from your coding agent.** Inside [pi](https://github.com/earendil-works/pi):
+
+```bash
+pi install npm:@getstandards/pi
+```
+
+Then run `/standards` in a session. The review uses the model and the credentials pi already resolved, so it needs no separate login, and the findings go to the agent that can fix them. See the [pi extension specification](specs/pi.md).
+
 ## Why Standards?
 
 Engineering rules live in wikis, RFCs, and one reviewer's head. They surface after the incident, when someone says *we knew about this*. Standards moves them somewhere enforceable:
@@ -160,6 +168,8 @@ The full specification lives in [`specs/`](specs/):
 - [Review pipeline](specs/review.md): how a review runs, and how it keeps token use low
 - [CLI](specs/cli.md): `init`, `validate`, `review`, and the other commands
 - [GitHub Action](specs/github.md): check runs, pull request comments, and permissions
+- [pi extension](specs/pi.md): `/standards` inside the pi coding agent
+- [Core library](specs/library.md): the packages and the surface every host builds on
 - [Suppressions](specs/suppressions.md): how to waive a finding in code
 - [Rule tests](specs/testing.md): how to test a rule before you enforce it
 

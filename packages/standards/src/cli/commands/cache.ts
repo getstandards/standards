@@ -1,14 +1,14 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { resolveCacheDirectory } from "../../cache/cache-directory.js";
+import { type ImportProgressReporter, loadRules } from "@getstandards/core";
 import {
+	commitObjectIdSchema,
+	errorMessage,
 	GIT_SOURCE_BUCKET_NAME,
+	isMissingFileError,
 	openGitSourceCache,
-} from "../../cache/git-source-cache.js";
-import type { ImportProgressReporter } from "../../cache/import-progress.js";
-import { commitObjectIdSchema } from "../../config/configuration-schema.js";
-import { loadRules } from "../../rules/rules-loader.js";
-import { errorMessage, isMissingFileError } from "../../utils/errors.js";
+	resolveCacheDirectory,
+} from "@getstandards/core/internal";
 import type { CacheSubcommand } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";
 import { renderCacheHelp } from "../cli-help.js";

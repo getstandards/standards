@@ -1,3 +1,4 @@
+import { errorMessage } from "@getstandards/core/internal";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
 import {
@@ -6,7 +7,6 @@ import {
 	type ProviderCredentialReport,
 	readProviderCredentialStates,
 } from "../../credentials/provider-credential-state.js";
-import { errorMessage } from "../../utils/errors.js";
 import type { CommandContext } from "../cli-context.js";
 
 /** `auth status` is a checking command: it exits with 2 when it could not run. */

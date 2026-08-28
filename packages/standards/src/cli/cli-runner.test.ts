@@ -8,10 +8,10 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runGit } from "@getstandards/core/internal";
 import { select } from "@inquirer/prompts";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runGit } from "../utils/git.js";
 import type { CliOutput } from "./cli-context.js";
 import { runCli } from "./cli-runner.js";
 import { VERSION } from "./version.js";

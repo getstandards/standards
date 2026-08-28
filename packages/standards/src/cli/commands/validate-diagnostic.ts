@@ -1,8 +1,10 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { ConfigurationLoadError } from "../../config/configuration-loader.js";
-import { ConfigurationResolutionError } from "../../rules/rules-loader.js";
-import { errorMessage } from "../../utils/errors.js";
+import { ConfigurationResolutionError } from "@getstandards/core";
+import {
+	ConfigurationLoadError,
+	errorMessage,
+} from "@getstandards/core/internal";
 
 interface DiagnosticDetails {
 	category: string;

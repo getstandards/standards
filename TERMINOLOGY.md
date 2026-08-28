@@ -14,6 +14,7 @@ Canonical words used across Standards code and documentation.
 - **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion and the report.
 - **configuration** — The validated `.standards.yml` document (`version` and `sources`).
 - **cost** — The model spend of a review in United States dollars, computed by the provider SDK from its per-request rates. The report carries one `cost` per step and their sum as `total_cost`.
+- **core** — The `@getstandards/core` package: resolution, the review pipeline, and their types. It holds no credential code. Every Standards surface runs the same review through it.
 - **cost basis** — What the review's cost number means: `charged` (an API key credential), `list_price_estimate` (a subscription credential), or `none` (every selected model has a zero cost).
 - **derived id** — The rule `id` computed from a document path relative to its mapped folder: the `.md` extension removed and `/` replaced with `.`.
 - **diagnostic** — A structured, human-actionable error report with category, source, field, problem, and next action.
@@ -29,6 +30,8 @@ Canonical words used across Standards code and documentation.
 - **knowledge source** — One `sources` entry of the configuration: a local directory (`path`) or a Git repository (`repository`, optional `branch`, optional `path`) that holds a bundle, with its `folders` mappings and optional `id_prefix`.
 - **level** — The requirement level of a rule, set by its folder mapping: `MUST` (blocking) or `SHOULD` (advisory).
 - **model reference** — A provider and model identifier in `<provider>/<model>` form, such as `anthropic/claude-sonnet-5`. It is the value that `--model` and the model settings fields accept, and the value that `standards models` prints on every model line.
+- **models runtime** — The model access one review calls, named `ReviewModels` in the core. Each surface supplies its own: the CLI over the credential file, the action over the accepted API key variables, the pi extension over pi's model registry. The core never reads a credential.
+- **pi extension** — The `@getstandards/pi` package: the pi package that registers `/standards` and runs a review in the pi process, on pi's resolved authentication.
 - **provider** — One model provider registered in the pi AI SDK, named by its SDK provider id. The id is the credential key: `openai` and `openai-codex` are separate providers with separate credentials.
 - **repository root** — The canonicalized root directory where `.standards.yml` must live.
 - **resolution** — The complete output of configuration loading and rule discovery: the ordered rules, the resolved Git commits, and the warnings. The review pipeline receives it as one value.

@@ -1,4 +1,4 @@
-import { DEFAULT_PROVIDER_MODELS } from "../review/model-selection.js";
+import { DEFAULT_PROVIDER_MODELS } from "@getstandards/core";
 import { renderBanner } from "./banner.js";
 import type { CliCommand } from "./cli-args.js";
 

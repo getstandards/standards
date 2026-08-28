@@ -8,10 +8,10 @@ import {
 	fauxProvider,
 	fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { runGit } from "@getstandards/core/internal";
 import { Octokit } from "@octokit/rest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAutomationModels } from "../credentials/models-runtime.js";
-import { runGit } from "../utils/git.js";
 import { runAction } from "./action-run.js";
 import { REPORT_COMMENT_MARKER } from "./report-markdown.js";
 
