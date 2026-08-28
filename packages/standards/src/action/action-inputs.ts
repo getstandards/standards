@@ -19,6 +19,7 @@ export const actionInputsSchema = z.object({
 	model: z.string().min(1).optional(),
 	evaluationModel: z.string().min(1).optional(),
 	verificationModel: z.string().min(1).optional(),
+	concurrency: z.string().min(1).optional(),
 	providerEnv: z.array(environmentVariableName),
 });
 
@@ -60,6 +61,7 @@ export function parseActionInputs(
 		model: readInput(environment, "model"),
 		evaluationModel: readInput(environment, "evaluation-model"),
 		verificationModel: readInput(environment, "verification-model"),
+		concurrency: readInput(environment, "concurrency"),
 		providerEnv: splitProviderEnv(readInput(environment, "provider-env")),
 	});
 }
@@ -113,6 +115,9 @@ export function buildReviewEnvironment(
 	}
 	if (inputs.verificationModel !== undefined) {
 		review.STANDARDS_VERIFICATION_MODEL = inputs.verificationModel;
+	}
+	if (inputs.concurrency !== undefined) {
+		review.STANDARDS_CONCURRENCY = inputs.concurrency;
 	}
 	for (const name of inputs.providerEnv) {
 		const value = environment[name];

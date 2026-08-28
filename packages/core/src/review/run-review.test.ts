@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import type { Rule } from "../rules/rule.js";
 import { runGit } from "../utils/git.js";
+import { ReviewConcurrencyError } from "./review-concurrency.js";
 import { runReview } from "./run-review.js";
 import type { ReviewStepProgress } from "./step-progress.js";
 
@@ -376,11 +377,30 @@ describe("runReview", () => {
 			"Targets: invoice.ts",
 			"Selected invoice.ts (modified): money.no-float",
 			"Evaluation task 1/1: invoice.ts (rules: money.no-float)",
+			"Concurrency limit: 4",
 			"Evaluating task 1/1: invoice.ts.",
 			"Discarded duplicate finding: money.no-float at invoice.ts:1-2.",
 			"Verifying finding 1/1: money.no-float at invoice.ts:1-1.",
 			"Rejected finding: money.no-float at invoice.ts:1-1.",
 		]);
+	});
+
+	it("fails before any model call when the concurrency limit is invalid", async () => {
+		const directory = await initRepository();
+		await writeFile(path.join(directory, "invoice.ts"), "const total = 1;\n");
+		const base = await commitAll(directory, "base");
+		const { faux, models } = anthropicFaux();
+		faux.setResponses([]);
+
+		await expect(
+			runReview({
+				scope: { kind: "commits", baseRevision: base, headRevision: base },
+				workingDirectory: directory,
+				resolution: { rules: [moneyRule], gitSources: [], warnings: [] },
+				models,
+				environment: { STANDARDS_CONCURRENCY: "0" },
+			}),
+		).rejects.toThrow(ReviewConcurrencyError);
 	});
 
 	it("reports the live count of finished invocations per agent step", async () => {

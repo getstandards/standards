@@ -57,9 +57,12 @@ verification_model: anthropic/claude-opus-5
 | `model` | string | No | Default model reference for both agent steps. |
 | `evaluation_model` | string | No | Default model reference for the evaluation step. |
 | `verification_model` | string | No | Default model reference for the verification step. |
+| `concurrency` | integer | No | Default concurrency limit for the review agent invocations. See [Standards review concurrency](./concurrency.md). |
 
 Every field except `version` is optional. A model field MUST hold a valid
-model reference, as defined in [Standards review](./review.md). Unknown
+model reference, as defined in [Standards review](./review.md). The
+`concurrency` field MUST hold an integer greater than or equal to `1`, as
+defined in [Standards review concurrency](./concurrency.md). Unknown
 fields MUST cause validation to fail.
 
 The `cache_dir` field MAY start with `~/` on Unix systems or `~\\` on
@@ -80,6 +83,10 @@ For model selection, `evaluation_model` and `verification_model` sit below
 the step's option and environment variable, and `model` sits below those
 per-step fields. The complete order is specified in
 [Standards review](./review.md).
+
+For the concurrency limit, the `concurrency` field sits between the
+`STANDARDS_CONCURRENCY` environment variable and the built-in default, as
+specified in [Standards review concurrency](./concurrency.md).
 
 ## Validation
 

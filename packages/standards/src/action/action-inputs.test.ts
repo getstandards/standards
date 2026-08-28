@@ -12,6 +12,7 @@ describe("parseActionInputs", () => {
 				INPUT_MODEL: "anthropic/claude-sonnet-5",
 				"INPUT_EVALUATION-MODEL": "openai/gpt-5.5",
 				"INPUT_VERIFICATION-MODEL": "anthropic/claude-opus-5",
+				INPUT_CONCURRENCY: "8",
 				"INPUT_PROVIDER-ENV": "OPENROUTER_API_KEY, CLOUDFLARE_ACCOUNT_ID",
 			}),
 		).toEqual({
@@ -22,6 +23,7 @@ describe("parseActionInputs", () => {
 			model: "anthropic/claude-sonnet-5",
 			evaluationModel: "openai/gpt-5.5",
 			verificationModel: "anthropic/claude-opus-5",
+			concurrency: "8",
 			providerEnv: ["OPENROUTER_API_KEY", "CLOUDFLARE_ACCOUNT_ID"],
 		});
 	});
@@ -57,6 +59,7 @@ describe("buildReviewEnvironment", () => {
 				"INPUT_ANTHROPIC-API-KEY": "anthropic-key",
 				"INPUT_GOOGLE-API-KEY": "google-key",
 				INPUT_MODEL: "anthropic/claude-sonnet-5",
+				INPUT_CONCURRENCY: "8",
 			}),
 			{},
 		);
@@ -64,6 +67,7 @@ describe("buildReviewEnvironment", () => {
 			ANTHROPIC_API_KEY: "anthropic-key",
 			GEMINI_API_KEY: "google-key",
 			STANDARDS_MODEL: "anthropic/claude-sonnet-5",
+			STANDARDS_CONCURRENCY: "8",
 		});
 		expect(review.hasCredential).toBe(true);
 	});

@@ -94,6 +94,7 @@ describe("runEvaluation", () => {
 			models,
 			model: faux.getModel(),
 			tasks: [taskFor(file)],
+			concurrency: 4,
 			headCheckoutDir: process.cwd(),
 		});
 
@@ -163,6 +164,7 @@ describe("runEvaluation", () => {
 			models,
 			model: faux.getModel(),
 			tasks: [taskFor(file)],
+			concurrency: 4,
 			headCheckoutDir: process.cwd(),
 		});
 
@@ -218,6 +220,7 @@ describe("runEvaluation", () => {
 			models,
 			model: faux.getModel(),
 			tasks: [taskFor(file)],
+			concurrency: 4,
 			headCheckoutDir: directory,
 		});
 

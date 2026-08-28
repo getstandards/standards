@@ -124,6 +124,10 @@ const REVIEW_OPTIONS: OptionHelp[] = [
 		description: "Run the verification step on this model",
 	},
 	{
+		name: "--concurrency <n>",
+		description: "Run at most <n> agent invocations at the same time",
+	},
+	{
 		name: "--cache-dir <path>",
 		description: "Use <path> as the source cache directory",
 	},

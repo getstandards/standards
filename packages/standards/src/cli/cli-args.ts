@@ -1,5 +1,8 @@
 import { parseArgs } from "node:util";
-import { errorMessage } from "@getstandards/core/internal";
+import {
+	errorMessage,
+	parseConcurrencyLimit,
+} from "@getstandards/core/internal";
 import { z } from "zod/v4";
 import { renderCommandHelp } from "./cli-help.js";
 
@@ -60,6 +63,8 @@ export interface ReviewCliArgs {
 	model?: string;
 	evaluationModel?: string;
 	verificationModel?: string;
+	/** The concurrency limit of the review (specs/concurrency.md). */
+	concurrency?: number;
 	verbose: boolean;
 }
 
@@ -116,6 +121,7 @@ function parseRawCliArguments(arguments_: readonly string[]) {
 				model: { type: "string" },
 				"evaluation-model": { type: "string" },
 				"verification-model": { type: "string" },
+				concurrency: { type: "string" },
 			},
 			allowPositionals: true,
 			strict: true,
@@ -170,6 +176,7 @@ export function parseCliArgs(
 		model: parsed.values.model,
 		evaluationModel: parsed.values["evaluation-model"],
 		verificationModel: parsed.values["verification-model"],
+		concurrency: parsed.values.concurrency,
 	};
 
 	if (help) {
@@ -245,6 +252,7 @@ interface ReviewOptionValues {
 	model?: string;
 	evaluationModel?: string;
 	verificationModel?: string;
+	concurrency?: string;
 }
 
 /**
@@ -270,6 +278,7 @@ function rejectReviewOnlyOptions(
 		["--model", values.model !== undefined],
 		["--evaluation-model", values.evaluationModel !== undefined],
 		["--verification-model", values.verificationModel !== undefined],
+		["--concurrency", values.concurrency !== undefined],
 	];
 	const given = givenOptions.find(
 		([name, isGiven]) => isGiven && !accepted.includes(name),
@@ -318,6 +327,16 @@ function parseReviewCommand(
 			REVIEW_ERROR_STATUS,
 		);
 	}
+	const concurrency =
+		values.concurrency === undefined
+			? undefined
+			: parseConcurrencyLimit(values.concurrency);
+	if (values.concurrency !== undefined && concurrency === undefined) {
+		throw new CliArgumentError(
+			`Option '--concurrency' expects an integer greater than or equal to 1, not '${values.concurrency}'.`,
+			REVIEW_ERROR_STATUS,
+		);
+	}
 	return {
 		command: "review",
 		review: {
@@ -332,6 +351,7 @@ function parseReviewCommand(
 			model: values.model,
 			evaluationModel: values.evaluationModel,
 			verificationModel: values.verificationModel,
+			concurrency,
 			verbose: values.verbose,
 		},
 		cacheDir,

@@ -6,6 +6,7 @@ import {
 	ModelSelectionError,
 	openRunGitSourceStore,
 	type Resolution,
+	ReviewConcurrencyError,
 	ReviewProviderError,
 	type ReviewReport,
 	ReviewRuleFilterError,
@@ -124,6 +125,7 @@ export async function runReviewCommand(
 				evaluationModel: options.evaluationModel,
 				verificationModel: options.verificationModel,
 			},
+			concurrency: options.concurrency,
 			environment,
 			settings,
 			reportProgress: printProgress,
@@ -158,6 +160,9 @@ export async function runReviewCommand(
 /** Format a review failure; a failed review reports no conclusion. */
 export function formatReviewFailure(error: unknown): string {
 	if (error instanceof ModelSelectionError) {
+		return error.diagnostic;
+	}
+	if (error instanceof ReviewConcurrencyError) {
 		return error.diagnostic;
 	}
 	if (error instanceof ReviewTargetError) {

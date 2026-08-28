@@ -97,6 +97,7 @@ describe("runVerification", () => {
 				finding({ path: "order.ts", lines: [1, 1] }),
 			],
 			ruleSet: [rule],
+			concurrency: 4,
 			headCheckoutDir: process.cwd(),
 		});
 
@@ -262,6 +263,7 @@ describe("runVerification suggested changes", () => {
 				}),
 			],
 			ruleSet: [rule],
+			concurrency: 4,
 			headCheckoutDir: directory,
 		});
 
@@ -303,6 +305,7 @@ describe("runVerification suggested changes", () => {
 				}),
 			],
 			ruleSet: [rule],
+			concurrency: 4,
 			headCheckoutDir: directory,
 		});
 
@@ -336,6 +339,7 @@ describe("runVerification suggested changes", () => {
 				}),
 			],
 			ruleSet: [rule],
+			concurrency: 4,
 			headCheckoutDir: directory,
 		});
 

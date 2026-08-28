@@ -107,6 +107,17 @@ the model fields of the settings file defined in
 complete selection precedence, and the default models are specified in
 [Standards review](./review.md).
 
+This option bounds the parallel agent invocations of a review:
+
+| Option | Meaning | Accepted by |
+| --- | --- | --- |
+| `--concurrency <n>` | Run at most `<n>` agent invocations at the same time. | `review`, `test` |
+
+`--concurrency` MUST take priority over the `STANDARDS_CONCURRENCY`
+environment variable and over the `concurrency` field of the settings file.
+The value rules, the complete precedence, and the default are specified in
+[Standards review concurrency](./concurrency.md).
+
 These options control command input and output:
 
 | Option | Meaning | Accepted by |

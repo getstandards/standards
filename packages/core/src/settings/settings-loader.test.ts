@@ -36,6 +36,7 @@ cache_dir: /data/standards-cache
 model: anthropic/claude-sonnet-5
 evaluation_model: google/gemini-3.1-pro
 verification_model: openai/gpt-5.5
+concurrency: 8
 `),
 		).toEqual({
 			version: 1,
@@ -43,6 +44,7 @@ verification_model: openai/gpt-5.5
 			model: "anthropic/claude-sonnet-5",
 			evaluation_model: "google/gemini-3.1-pro",
 			verification_model: "openai/gpt-5.5",
+			concurrency: 8,
 		});
 	});
 
@@ -86,6 +88,15 @@ verification_model: openai/gpt-5.5
 			/cache_dir: Expected a non-empty cache directory path/,
 		);
 	});
+
+	it.each(["0", "1.5", "two"])(
+		"rejects the concurrency limit %s",
+		(concurrency) => {
+			expect(() =>
+				loadStandardsSettings(`version: 1\nconcurrency: ${concurrency}\n`),
+			).toThrow(/concurrency: Expected an integer greater than or equal to 1/);
+		},
+	);
 
 	it("rejects more than one YAML document", () => {
 		expect(() =>

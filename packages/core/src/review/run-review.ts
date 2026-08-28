@@ -11,6 +11,7 @@ import {
 	type ModelSelectionOptions,
 	resolveSelectedModels,
 } from "./model-selection.js";
+import { resolveConcurrency } from "./review-concurrency.js";
 import type { ReviewModels } from "./review-models.js";
 import {
 	buildReviewReport,
@@ -41,6 +42,12 @@ export interface RunReviewInput {
 	models: ReviewModels;
 	/** Model references from the `standards review` options, when given. */
 	modelOptions?: ModelSelectionOptions;
+	/**
+	 * The concurrency limit from the surface option, when given
+	 * (specs/concurrency.md). An absent field reads the environment, the
+	 * settings, then the default.
+	 */
+	concurrency?: number;
 	environment: NodeJS.ProcessEnv;
 	settings?: StandardsSettings;
 	/** Receives the selected file and task counts before the evaluation step. */
@@ -64,6 +71,11 @@ export interface RunReviewInput {
  * from a change it did not fully evaluate.
  */
 export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
+	const concurrency = resolveConcurrency({
+		option: input.concurrency,
+		environment: input.environment,
+		settings: input.settings,
+	});
 	const selectedModels = await resolveSelectedModels({
 		options: input.modelOptions,
 		environment: input.environment,
@@ -160,10 +172,12 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 			selections.length === 1 ? "" : "s"
 		} in ${tasks.length} evaluation task${tasks.length === 1 ? "" : "s"}.`,
 	);
+	reportVerbose?.(`Concurrency limit: ${concurrency}`);
 	const evaluation = await runEvaluation({
 		models: input.models,
 		model: evaluationModel,
 		tasks,
+		concurrency,
 		headCheckoutDir: input.workingDirectory,
 		reportVerbose: input.reportVerbose,
 		reportStepProgress: input.reportStepProgress,
@@ -175,6 +189,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewReport> {
 		model: verificationModel,
 		findings: evaluation.findings,
 		ruleSet,
+		concurrency,
 		headCheckoutDir: input.workingDirectory,
 		reportVerbose: input.reportVerbose,
 		reportStepProgress: input.reportStepProgress,
