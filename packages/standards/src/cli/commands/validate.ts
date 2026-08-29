@@ -1,23 +1,39 @@
-import { access, realpath } from "node:fs/promises";
-import path from "node:path";
-import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
-import { createImportProgressReporter } from "../../cache/import-progress.js";
-import { loadRules } from "../../config/configuration-resolver.js";
-import { requirementLevels } from "../../config/configuration-schema.js";
+import { readFile, realpath } from "node:fs/promises";
+import {
+	createImportProgressReporter,
+	type KnowledgeSource,
+	loadRules,
+	openRunGitSourceStore,
+	type Rule,
+} from "@getstandards/core";
+import {
+	findEntryFile,
+	loadConfiguration,
+	requirementLevels,
+} from "@getstandards/core/internal";
 import type { CommandContext } from "../cli-context.js";
 import { formatValidationError } from "./validate-diagnostic.js";
 
-const ENTRY_FILE_NAME = ".standards.yml";
-const LOCK_FILE_NAME = ".standards.lock";
-
-/** Return whether a path is accessible. */
-async function pathExists(candidatePath: string): Promise<boolean> {
-	try {
-		await access(candidatePath);
-		return true;
-	} catch {
-		return false;
+/** The label that names one knowledge source in the validation output. */
+function sourceLabel(source: KnowledgeSource): string {
+	if ("repository" in source) {
+		const branch = source.branch ?? "default branch";
+		const prefix =
+			source.id_prefix === undefined ? "" : ` (id_prefix: ${source.id_prefix})`;
+		return `${source.repository} at ${branch}${prefix}`;
 	}
+	const prefix =
+		source.id_prefix === undefined ? "" : ` (id_prefix: ${source.id_prefix})`;
+	return `${source.path}${prefix}`;
+}
+
+/** Render one rule's resolved applies_to scope on one line. */
+function formatAppliesTo(appliesTo: Rule["applies_to"]): string {
+	const include = appliesTo?.include?.join(", ") ?? "every file";
+	const exclude = appliesTo?.exclude;
+	return exclude === undefined
+		? include
+		: `${include} except ${exclude.join(", ")}`;
 }
 
 /** Validate and resolve the Standards configuration in the working directory. */
@@ -40,13 +56,17 @@ export async function runValidateCommand({
 		output.error(line),
 	);
 	try {
-		const rules = await loadRules(workingDirectory, {
+		const { rules, gitSources, warnings } = await loadRules(workingDirectory, {
 			gitSourceStore,
 			reportProgress,
 		});
 		const repositoryRoot = await realpath(workingDirectory);
-		const hasLockfile = await pathExists(
-			path.join(repositoryRoot, LOCK_FILE_NAME),
+		// The resolution succeeded, so re-reading the entry file for the source
+		// and folder listing cannot fail on the parse.
+		const entryFile = await findEntryFile(repositoryRoot);
+		const configuration = loadConfiguration(
+			await readFile(entryFile.path, "utf8"),
+			entryFile.name,
 		);
 		const levelSummary = requirementLevels
 			.map((level) => ({
@@ -57,13 +77,55 @@ export async function runValidateCommand({
 			.map(({ level, count }) => `${level}: ${count}`)
 			.join(", ");
 
-		output.log(`Standards configuration is valid.
+		const lines = [
+			"Standards configuration is valid.",
+			"",
+			`  Repository:     ${repositoryRoot}`,
+			`  Entry file:     ${entryFile.name}`,
+		];
 
-  Repository:     ${repositoryRoot}
-  Entry file:     ${ENTRY_FILE_NAME}
-  Lock file:      ${hasLockfile ? `${LOCK_FILE_NAME} (present)` : "not present"}
-  Resolved rules: ${rules.length}
-  Levels:         ${levelSummary || "none"}`);
+		if (configuration.sources.length > 0) {
+			lines.push("", "Knowledge sources:");
+			for (const source of configuration.sources) {
+				lines.push(`  ${sourceLabel(source)}`);
+				for (const mapping of source.folders) {
+					lines.push(`    ${mapping.folder}: ${mapping.level}`);
+				}
+			}
+		}
+
+		if (rules.length > 0) {
+			lines.push("", "Rules:");
+			const idWidth = Math.max(...rules.map((rule) => rule.id.length));
+			for (const rule of rules) {
+				lines.push(
+					`  ${rule.level.padEnd(6)} ${rule.id.padEnd(idWidth)}  ${formatAppliesTo(rule.applies_to)}`,
+				);
+			}
+		}
+
+		if (gitSources.length > 0) {
+			lines.push("", "Git commits:");
+			for (const source of gitSources) {
+				lines.push(
+					`  ${source.repository} at ${source.branch}: ${source.commit}`,
+				);
+			}
+		}
+
+		if (warnings.length > 0) {
+			lines.push("", "Warnings:");
+			for (const warning of warnings) {
+				lines.push(`  ${warning.document}: ${warning.problem}`);
+			}
+		}
+
+		lines.push(
+			"",
+			`  Resolved rules: ${rules.length}`,
+			`  Levels:         ${levelSummary || "none"}`,
+		);
+		output.log(lines.join("\n"));
 		return 0;
 	} catch (error) {
 		output.error(await formatValidationError(error, workingDirectory));

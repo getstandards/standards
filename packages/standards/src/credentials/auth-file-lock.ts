@@ -1,7 +1,7 @@
 import { mkdir, open, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { errorMessage } from "../utils/errors.js";
+import { errorMessage } from "@getstandards/core/internal";
 
 /** The suffix of the lock file that guards one credential file. */
 const AUTH_FILE_LOCK_SUFFIX = ".lock";

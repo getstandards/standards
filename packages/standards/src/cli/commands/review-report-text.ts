@@ -1,22 +1,24 @@
+import {
+	formatCost,
+	type ReportedFinding,
+	type RequirementLevel,
+	type ReviewReport,
+	type ReviewUsage,
+	type StepUsage,
+} from "@getstandards/core";
+import { requirementLevels } from "@getstandards/core/internal";
 import chalk from "chalk";
 import figures from "figures";
-import { requirementLevels } from "../../config/configuration-schema.js";
-import type { Rule } from "../../config/index.js";
-import { formatCost, type StepUsage } from "../../review/agent-usage.js";
-import type {
-	ReportedFinding,
-	ReviewReport,
-	ReviewUsage,
-} from "../../review/review-report.js";
 
 /**
  * Render the review report for a terminal (specs/review.md step 5).
  *
  * It shows the same information as the machine-readable report: the
- * conclusion, the model of each agent step, the counts, the usage, and every
- * finding. Rendering is deterministic and uses no model. This is the plain
- * rendering used when standard output is not a terminal or when the report is
- * captured, so it stays free of color codes and decorative glyphs.
+ * conclusion, the model of each agent step, the counts, the usage, the
+ * resolved Git sources, the loader warnings, and every finding. Rendering is
+ * deterministic and uses no model. This is the plain rendering used when
+ * standard output is not a terminal or when the report is captured, so it
+ * stays free of color codes and decorative glyphs.
  */
 export function renderReviewReportText(report: ReviewReport): string {
 	const lines: string[] = [
@@ -32,6 +34,20 @@ export function renderReviewReportText(report: ReviewReport): string {
 		`  Verification usage:  ${formatStepUsage(report.usage.verification)}`,
 		`  Total cost:          ${formatTotalCost(report.usage)}`,
 	];
+	if (report.sources.length > 0) {
+		lines.push("", "Knowledge sources:");
+		for (const source of report.sources) {
+			lines.push(
+				`  ${source.repository} at ${source.branch}: ${source.commit}`,
+			);
+		}
+	}
+	if (report.warnings.length > 0) {
+		lines.push("", "Warnings:");
+		for (const warning of report.warnings) {
+			lines.push(`  ${warning.document}: ${warning.problem}`);
+		}
+	}
 	if (report.findings.length > 0) {
 		lines.push("", "Findings:");
 		for (const finding of report.findings) {
@@ -100,6 +116,22 @@ export function renderReviewReportTerminal(report: ReviewReport): string {
 		),
 		reviewField("Total cost:", chalk.dim(formatTotalCost(report.usage))),
 	];
+	if (report.sources.length > 0) {
+		lines.push("", chalk.bold("Knowledge sources"));
+		for (const source of report.sources) {
+			lines.push(
+				`  ${source.repository} at ${source.branch}: ${chalk.dim(source.commit)}`,
+			);
+		}
+	}
+	if (report.warnings.length > 0) {
+		lines.push("", chalk.bold("Warnings"));
+		for (const warning of report.warnings) {
+			lines.push(
+				`  ${chalk.yellow(figures.warning)} ${warning.document}: ${warning.problem}`,
+			);
+		}
+	}
 	if (report.findings.length > 0) {
 		lines.push("", chalk.bold("Findings"));
 		for (const finding of report.findings) {
@@ -133,7 +165,7 @@ function reviewField(label: string, value: string): string {
 	return `  ${chalk.dim(label.padEnd(FIELD_WIDTH))}${value}`;
 }
 
-/** Count the findings for each requirement level, such as 'MUST NOT: 1'. */
+/** Count the findings for each requirement level, such as 'MUST: 1'. */
 function formatFindingLevels(findings: readonly ReportedFinding[]): string {
 	const summary = requirementLevels
 		.map((level) => ({
@@ -190,19 +222,17 @@ function formatFindingLocation(finding: ReportedFinding): string {
 function formatFinding(finding: ReportedFinding): string[] {
 	const lines = [
 		`  ${formatFindingLocation(finding)}  ${finding.rule} (${finding.level})`,
+		`    Rule:       ${finding.title}`,
 		`    Evidence:   ${finding.evidence}`,
 		`    Reason:     ${finding.reason}`,
 	];
+	if (finding.suggestion !== undefined) {
+		lines.push(`    Suggestion: ${finding.suggestion}`);
+	}
 	if (finding.suggested_change !== undefined) {
 		// The replacement keeps its own line boundaries; it is shown, never
 		// truncated (specs/review.md text rendering).
 		lines.push("    Suggested change:", finding.suggested_change);
-	}
-	if (finding.guidance !== undefined) {
-		lines.push(`    Guidance:   ${finding.guidance}`);
-	}
-	if (finding.references !== undefined) {
-		lines.push(`    References: ${finding.references.join(", ")}`);
 	}
 	return lines;
 }
@@ -212,21 +242,17 @@ function formatFindingTerminal(finding: ReportedFinding): string[] {
 	const level = levelStyle(finding.level);
 	const lines = [
 		`  ${level.style(level.marker)} ${chalk.bold(formatFindingLocation(finding))}  ${chalk.cyan(finding.rule)} ${level.style(`(${finding.level})`)}`,
+		`    ${chalk.dim("Rule:")}       ${finding.title}`,
 		`    ${chalk.dim("Evidence:")}   ${finding.evidence}`,
 		`    ${chalk.dim("Reason:")}     ${finding.reason}`,
 	];
+	if (finding.suggestion !== undefined) {
+		lines.push(`    ${chalk.dim("Suggestion:")} ${finding.suggestion}`);
+	}
 	if (finding.suggested_change !== undefined) {
 		lines.push(
 			`    ${chalk.dim("Suggested change:")}`,
 			finding.suggested_change,
-		);
-	}
-	if (finding.guidance !== undefined) {
-		lines.push(`    ${chalk.dim("Guidance:")}   ${finding.guidance}`);
-	}
-	if (finding.references !== undefined) {
-		lines.push(
-			`    ${chalk.dim("References:")} ${finding.references.join(", ")}`,
 		);
 	}
 	return lines;
@@ -239,15 +265,11 @@ interface LevelStyle {
 }
 
 /** The semantic style for a requirement level, mirroring a severity scale. */
-function levelStyle(level: Rule["level"]): LevelStyle {
+function levelStyle(level: RequirementLevel): LevelStyle {
 	switch (level) {
 		case "MUST":
-		case "MUST NOT":
 			return { marker: figures.cross, style: chalk.red };
 		case "SHOULD":
-		case "SHOULD NOT":
 			return { marker: figures.warning, style: chalk.yellow };
-		case "MAY":
-			return { marker: figures.info, style: chalk.cyan };
 	}
 }

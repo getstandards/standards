@@ -1,3 +1,4 @@
+import { errorMessage } from "@getstandards/core/internal";
 import { select } from "@inquirer/prompts";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import {
@@ -6,7 +7,6 @@ import {
 } from "../../credentials/login-method.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
 import { createTerminalLoginInteraction } from "../../credentials/terminal-login-interaction.js";
-import { errorMessage } from "../../utils/errors.js";
 import type { CommandContext } from "../cli-context.js";
 import { formatKnownProvidersDiagnostic } from "./known-providers-diagnostic.js";
 

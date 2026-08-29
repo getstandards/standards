@@ -4,283 +4,359 @@ Defines Standards configuration format.
 
 ## Purpose
 
-A Standards configuration defines the engineering rules that an agent can
-evaluate during review of a change. A repository can define rules directly,
-extend one or more local files, extend files from other Git repositories, or
-combine these options.
+A Standards configuration names the knowledge sources whose documents an agent
+can enforce during review of a change. A rule is a knowledge document in the
+Open Knowledge Format (OKF): a markdown file with YAML frontmatter and a prose
+body. The configuration maps knowledge folders to requirement levels.
 
-This document specifies version 1 of the configuration format. It does not
+This document specifies version 2 of the configuration format. It does not
 specify how the review agent selects rules, evaluates a change, or reports a
 result. [Standards review](./review.md) specifies these.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` in this
-document are to be interpreted as described by RFC 2119. The same words are
-also valid values for a rule's `level` field.
+document are to be interpreted as described by RFC 2119.
 
 ## Entry file
 
-The entry file MUST be named `.standards.yml` and MUST be at the repository
-root. It MUST contain one YAML document.
+The entry file MUST be at the repository root and MUST be named
+`.standards.yml` or `.standards.yaml`. It MUST contain one YAML document. A
+repository that contains both names MUST cause resolution to fail.
 
-Every configuration file, including an extended file, MUST use the format in
-this specification. A minimal configuration is:
+A minimal configuration is:
 
 ```yaml
 ---
-version: 1
+version: 2
 ```
 
 ## Example
 
 ```yaml
 ---
-version: 1
-name: payments-service
-description: Standards for the payments service.
+version: 2
 
-extends:
-  - path: .standards/typescript.yml
-  - git:
-      repository: https://github.com/acme/engineering-standards.git
-      revision:
-        tag: v2.1.0
-      path: rules/security.yml
-
-rules:
-  - id: payments.no-floating-point-money
-    level: MUST NOT
-    description: Monetary values must not use floating-point types.
-    rationale: Floating-point rounding can produce incorrect payment amounts.
-    applies_to:
-      include:
-        - src/**/*.{ts,tsx}
-      exclude:
-        - src/**/*.test.ts
-    guidance: Use the Money value object or an integer in the smallest currency unit.
-    references:
-      - https://engineering.example.com/decisions/money-values
+sources:
+  - path: knowledge
+    folders:
+      architecture: MUST
+      engineering-guides:
+        level: SHOULD
+        documents:
+          exclude:
+            - templates/**
+        applies_to:
+          include:
+            - src/**
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 ```
 
 ## Top-level fields
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `version` | integer | Yes | Configuration format version. Version 1 requires the value `1`. |
-| `name` | string | No | Human-readable name of this rule set. |
-| `description` | string | No | Human-readable purpose and scope of this rule set. |
-| `extends` | array of source objects | No | Other configuration files to load before this file. |
-| `rules` | array of rule objects | No | Rules defined by this file. The default is an empty array. |
+| `version` | integer | Yes | Configuration format version. Version 2 requires the value `2`. |
+| `sources` | array of source objects | No | The knowledge sources to read rules from. The default is an empty array. |
 
-Unknown top-level fields MUST cause validation to fail. `extends` and `rules`
-are independent and optional. A file that contains only `version` is valid and
-resolves to an empty rule set.
+Unknown top-level fields MUST cause validation to fail. The configuration MUST
+NOT contain top-level `name` or `description` fields; no implemented behavior
+uses them. A file that contains only `version` is valid and resolves to an
+empty rule set.
 
-## Extended files
+## Knowledge sources
 
-`extends` is an ordered list. Each item MUST contain exactly one of `path` or
-`git`.
+A source is a directory tree that holds an OKF bundle. OKF specifies the
+document format, not folder names, so the configuration states which folders
+hold rules. Standards does not define a folder layout for a bundle. Each source
+MUST contain exactly one of `path` or `repository`, and MUST list a non-empty
+`folders` mapping.
 
 ### Local source
 
 ```yaml
-extends:
-  - path: .standards/backend.yml
-  - path: .standards/security.yml
+sources:
+  - path: knowledge
+    folders:
+      architecture: MUST
 ```
 
-`path` MUST be a relative path. It is resolved from the directory that contains
-the file with the `extends` declaration. The resolved path MUST stay within the
-root of the repository being reviewed, including after symbolic links are
-resolved. Absolute paths and paths that escape the repository MUST cause
-resolution to fail.
-
-Local files MAY extend other local or Git sources.
+`path` MUST be a relative path to a directory. It is resolved from the
+repository root. The resolved path MUST stay within the root of the repository
+being reviewed, including after symbolic links are resolved. Absolute paths
+and paths that escape the repository MUST cause resolution to fail.
 
 ### Git source
 
 ```yaml
-extends:
-  - git:
-      repository: https://github.com/acme/engineering-standards.git
-      revision:
-        tag: v2.1.0
-      path: rules/base.yml
-```
-
-| Field | Type | Required | Meaning |
-| --- | --- | --- | --- |
-| `repository` | string | Yes | HTTPS URL of the Git repository. |
-| `revision` | object | Yes | Commit, tag, or branch that identifies the Git revision to load. |
-| `path` | string | Yes | Relative path to the configuration file in the resolved commit. |
-
-`revision` MUST contain exactly one of `commit`, `tag`, or `branch`:
-
-```yaml
-revision:
-  commit: 9d64a5838f8dbf26f0f1e51078a29c756970ca31
-```
-
-```yaml
-revision:
-  tag: v2.1.0
-```
-
-```yaml
-revision:
-  branch: main
-```
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `commit` | string | Full commit object ID. It is immutable and does not require a lock entry. |
-| `tag` | string | Git tag name without the `refs/tags/` prefix. It MUST resolve through the lock file. |
-| `branch` | string | Git branch name without the `refs/heads/` prefix. It MUST resolve through the lock file. |
-
-Version 1 requires an HTTPS repository URL. Tags and branches are mutable in
-Git, so they MUST NOT be used without the lock mechanism specified below. A
-generic `latest` revision selector MUST NOT be accepted because Git does not
-define what it identifies. A tag or branch whose exact name is `latest` is a
-valid revision and follows the normal lock rules. The implementation MAY use
-configured Git credentials, but credentials MUST NOT be stored in the
-configuration or lock file.
-
-The `path` value MUST be relative to the root of the referenced repository. It
-MUST NOT escape that root. A file loaded from Git MAY extend paths in the same
-Git repository and revision. It MAY also extend another Git source. A local
-source referenced from a Git source MUST NOT resolve into the repository being
-reviewed.
-
-## Lock file
-
-The lock file makes tag-based and branch-based Git sources reproducible. It
-MUST be named `.standards.lock` and MUST be at the root of the repository
-being reviewed. It MUST be committed to the repository when the configuration
-uses a tag or branch revision.
-
-An entry file that directly or indirectly uses a tag or branch revision MUST
-have a lock file. A configuration that uses only commit revisions does not
-require one.
-
-Example:
-
-```yaml
----
-version: 1
 sources:
-  - repository: https://github.com/acme/engineering-standards.git
-    revision:
-      tag: v2.1.0
-    commit: 9d64a5838f8dbf26f0f1e51078a29c756970ca31
+  - repository: https://github.com/acme/shared-knowledge.git
+    branch: main
+    path: knowledge
+    id_prefix: shared
+    folders:
+      reliability: MUST
 ```
 
-### Lock file fields
-
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `version` | integer | Yes | Lock format version. Version 1 requires the value `1`. |
-| `sources` | array of source locks | Yes | Resolved tag and branch revisions. |
+| `repository` | string | Yes | URL of the Git repository. |
+| `branch` | string | No | Branch name without the `refs/heads/` prefix. When absent, the loader uses the repository's default branch. |
+| `path` | string | No | Relative path to the bundle root in the repository. The default is the repository root. |
+| `id_prefix` | string | No | Prefix added to every derived rule id from this source. |
+| `folders` | object | Yes | The folder mappings that Standards enforces. |
 
-Each source lock has these fields:
+The Git fields are not nested under a `git` field. The configuration uses
+`branch`, not `ref`, because Standards accepts only a branch.
 
-| Field | Type | Required | Meaning |
-| --- | --- | --- | --- |
-| `repository` | string | Yes | Exact HTTPS repository URL from the Git source. |
-| `revision` | object | Yes | Exact `tag` or `branch` object from the Git source. |
-| `commit` | string | Yes | Full commit object ID to which the revision resolved during the lock update. |
+`repository` accepts two URL forms:
 
-The lock entry's `revision` MUST contain exactly one of `tag` or `branch`.
-`commit` MUST NOT be used inside this object because immutable commit revisions
-do not have lock entries.
+- HTTPS, for example `https://github.com/example/engineering-knowledge`.
+  Credentials in the URL MUST be rejected. Authentication comes from the
+  environment, for example the action's token.
+- SSH, in `ssh://` or scp form, for example
+  `git@github.com:example/engineering-knowledge.git`. Authentication comes
+  from the user's SSH configuration. This form fits local CLI use against
+  private repositories.
 
-The combination of `repository`, revision type, and revision value identifies a
-lock entry. Each combination MUST be unique. The lock file MUST contain exactly
-one entry for every tag or branch revision in the resolved extension graph.
-Missing, duplicate, and unused entries MUST cause validation to fail. Unknown
-fields MUST also cause validation to fail.
+`path` MUST NOT escape the repository root.
 
-An explicit lock update operation MUST resolve each tag or branch to a commit
-and write the resulting full commit object ID. It MUST resolve a tag under
-`refs/tags/` and a branch under `refs/heads/`. It MUST NOT fall back to another
-reference type with the same name. If a tag is annotated, the operation MUST
-record the commit to which the tag ultimately points, not the tag object ID.
-The operation SHOULD produce stable output by sorting entries first by
-`repository`, then by revision type, and then by revision value.
+### Freshness
 
-During normal validation or review, an implementation MUST load the commit from
-the lock file. It MUST NOT resolve the tag or branch again or silently update
-the lock file. This behavior prevents a moved tag or branch from changing the
-rule set between two reviews of the same change. A user adopts changes to a mutable revision
-through an explicit lock update, and the resulting commit change is visible in
-the repository diff.
+Knowledge follows the branch. Standards does not pin sources. At the start of
+a run, the loader MUST resolve each `branch` to its current commit with
+`git ls-remote`, then fetch through the commit-keyed cache defined in
+[Standards source cache](./cache.md). A review always judges the change
+against the most recent accepted knowledge.
 
-The lock file at the root of the repository being reviewed covers the complete
-extension graph. Lock files found in extended repositories MUST NOT be used.
+For traceability, the report and the check run record the resolved commit of
+each Git source. The gate against a bad knowledge change is the knowledge
+repository's own review process, not a pin.
 
-## Rule fields
+### Folder mappings
+
+`folders` maps each bundle-relative folder to a requirement level. The folder
+name is the key. The short form maps a folder directly to a level:
 
 ```yaml
-rules:
-  - id: api.errors-use-problem-details
+folders:
+  architecture: MUST
+  engineering-guides: SHOULD
+```
+
+The expanded form adds document and target file filters:
+
+```yaml
+folders:
+  engineering-guides:
     level: SHOULD
-    description: HTTP APIs should return errors in the Problem Details format.
-    rationale: A shared error shape makes clients and operational tools simpler.
+    documents:
+      include:
+        - active/**/*.md
+      exclude:
+        - templates/**
     applies_to:
       include:
-        - api/**/*.{yaml,yml}
+        - src/**
       exclude:
-        - api/vendor/**
-    guidance: Use the shared Problem Details schema.
-    references:
-      - https://www.rfc-editor.org/rfc/rfc9457
+        - src/generated/**
 ```
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | Yes | Stable identifier for the rule. |
-| `level` | string | Yes | Requirement level: `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, or `MAY`. |
-| `description` | string | Yes | Complete, testable statement of the required or recommended behavior. |
-| `rationale` | string | Yes | Reason for the rule and the risk that it addresses. |
-| `applies_to` | object | No | File paths for which the rule is relevant. If absent, the rule applies to all files. |
-| `guidance` | string | No | Non-normative implementation guidance or a preferred alternative. |
-| `references` | array of strings | No | URLs or repository-relative paths with more information. |
+| `level` | string | Yes | `MUST` (blocking) or `SHOULD` (advisory). |
+| `documents` | object | No | An `include`/`exclude` glob filter, relative to the folder, that selects which documents become rules. The default `include` is `**/*.md` and the default `exclude` is empty; exclusion wins. |
+| `applies_to` | object or array | No | An `include`/`exclude` glob filter, relative to the target repository root, that scopes rules to a subset of files. The object form scopes every rule in the folder; the list form scopes groups of documents (see Target repository applicability). |
 
-Unknown rule fields MUST cause validation to fail.
+The short form is equivalent to an expanded form that contains only `level`.
+The folder name has no required meaning: Standards MUST NOT infer a level from
+the folder name.
 
-### Rule identifiers
+Discovery is recursive: every markdown document under the folder that the
+`documents` filter selects is a rule, at any depth. Standards MUST NOT give
+`index.md` or any other file name a special meaning. A folder that is not
+listed is not read: enforcement is opt-in per folder.
 
-An `id` MUST match this regular expression:
+Two mapped folders of the same source MUST NOT overlap: a folder that contains
+another mapped folder is a configuration error. This keeps one unambiguous
+level per document. A mapped folder MUST exist inside its knowledge source.
+
+### Rule id prefix
+
+`id_prefix` is an optional source field that solves identity conflicts between
+independent knowledge sources. It MUST match the rule id grammar without a
+final dot, and it is added, followed by a dot, to every derived id from the
+source. For a source with `id_prefix: platform` and `folder: practices`, the
+document `practices/api/pagination.md` has the rule id
+`platform.api.pagination`. When `id_prefix` is absent, the derived id does not
+change.
+
+### Target repository applicability
+
+The folder mapping `applies_to` filter scopes rules to a subset of target
+repository files. The configuration is the only place that sets file
+applicability: which files a rule applies to depends on the target repository
+layout, so a knowledge document MUST NOT decide it. A frontmatter `applies_to`
+field is ignored (see Frontmatter fields that Standards reads).
+
+`applies_to` accepts two forms. The object form scopes every rule in the
+folder with one filter:
+
+```yaml
+applies_to:
+  include:
+    - src/**
+```
+
+The list form scopes groups of documents inside the folder. Each entry names
+the documents it scopes with a `documents` glob, relative to the mapped
+folder, and carries its own `include`/`exclude` filter:
+
+```yaml
+applies_to:
+  - documents: clickhouse/**
+    include:
+      - apps/analytics/**
+  - documents: tidb/**
+    include:
+      - services/storage/**
+  - include:
+      - src/**
+```
+
+For each rule document, the first entry whose `documents` glob matches the
+document's folder-relative path decides the rule's filter; later entries are
+not read. An entry without `documents` matches every document. A document
+that no entry matches gets no filter, so its rule applies to every file.
+
+`documents` accepts one glob or a non-empty list of globs. An entry MUST
+contain `include`, `exclude`, or both. The object form is equivalent to a
+one-entry list without `documents`.
+
+### Requirement levels
+
+| Level | Meaning |
+| --- | --- |
+| `MUST` | Blocking. A confirmed finding makes the review non-compliant. |
+| `SHOULD` | Advisory. A confirmed finding is reported and does not block. |
+
+Polarity (required against prohibited) lives in the prose of the rule
+statement. The pipeline only needs the blocking / advisory distinction.
+
+## Knowledge document format
+
+### Frontmatter fields that Standards reads
+
+Standards does not control the bundles it reads, and OKF tooling validates
+very little. The loader therefore defines a default for every absent field
+and a safe behavior for every invalid one. A bad document MUST never break a
+review.
+
+| Field | Default when absent | Use |
+| --- | --- | --- |
+| `title` | The file name without `.md`. | The rule statement shown to the model and in reports. |
+| `description` | Absent. | A one-line summary shown in reports. An absent description stays absent. |
+| `status` | `stable` (the OKF default), so the document is enforced. | Lifecycle filter. Only `stable` documents are enforced. |
+| `adr_status` | No constraint. | Lifecycle filter. When present, only `accepted` is enforced. |
+| `superseded_by` | None. | Marks a superseded document, which is not enforced (see Superseded documents). |
+
+All other OKF fields (`type`, `tags`, `generated`, `verified`, `stale_after`,
+`sources`) and unknown fields MUST be accepted and ignored. The runtime rule
+carries only the fields that selection, review, or reporting use; it does not
+carry `type`, `tags`, or aliases. Standards MUST NOT reject a document because
+an unused field has a shape Standards does not consume.
+
+A frontmatter `applies_to` field is one of these ignored fields. File
+applicability is a consumer decision, so it lives only in the folder mapping
+(see Target repository applicability). A bundle stays portable: two
+repositories can consume the same document and scope it to different files.
+
+### Invalid documents
+
+A field that is present but invalid is not defaulted. The loader MUST skip the
+whole document and report a warning that names the document and the problem.
+Warnings appear in the report and in the check run, so the bundle gets fixed.
+Cases:
+
+- no frontmatter block, or frontmatter that is not valid YAML,
+- a frontmatter value with a wrong type (for example `title` as a list),
+- an unknown `status` or `adr_status` value,
+- a derived `id` that does not match the id grammar.
+
+A skipped document MUST NOT fail the run. Sources follow a branch, so a single
+bad commit in a shared bundle must not block every review that consumes it.
+Silence is the failure mode to avoid, not the run.
+
+Configuration mistakes are different: the consumer authors `.standards.yml`,
+so a mapped `folder` that does not exist in the bundle, or an unreachable
+source, is an error that MUST fail the run.
+
+### Body
+
+The body is the rationale. Standards sends the full markdown body to the model
+with the rule statement. Standards does not parse body sections. A URL in the
+body is reported, not fetched.
+
+## Rule identity
+
+The rule `id` derives from the document path relative to its mapped folder:
+remove the `.md` extension and replace `/` with `.`. Examples, with
+`folder: guides` and `folder: decisions` mapped:
+
+- `guides/llm/prompt-caching.md` → `llm.prompt-caching`
+- `guides/tidb/schema-design.md` → `tidb.schema-design`
+- `decisions/2026-08-25-llm-calls-use-llm-service.md` →
+  `2026-08-25-llm-calls-use-llm-service`
+
+The mapped folder is not part of the `id`. A bundle can rename its top-level
+folders without a change of rule identities; only the configuration mapping
+changes. A source `id_prefix`, when present, is added before the derived id,
+followed by a dot.
+
+A derived `id` MUST match this regular expression:
 
 ```text
 ^[a-z0-9]+(?:[._-][a-z0-9]+)*$
 ```
 
-Identifiers SHOULD include an organization, project, or domain prefix to avoid
-collisions, for example `acme.security.no-plaintext-secrets`. An identifier
-MUST remain stable when the rule text changes without changing its meaning.
+This is the version 1 rule `id` grammar, so suppression markers and finding
+fingerprints keep their existing shape. A document whose derived id does not
+match the grammar is skipped with a warning.
 
-Each resolved rule ID MUST be unique. A repeated ID, whether it is defined in
-one file or several extended files, MUST cause resolution to fail. Version 1
-does not support implicit replacement, overrides, or disabling inherited rules.
+Each resolved rule ID MUST be unique. Two documents can derive the same `id`
+from different mapped folders or different sources; a duplicate identity MUST
+cause resolution to fail. The duplicate-id diagnostic SHOULD tell the user that
+`id_prefix` can resolve the conflict.
 
-### Requirement levels
+Standards expects bundles to supersede enforced documents instead of editing
+them, so the identity is stable in practice. A content change creates a new
+document and a new identity.
 
-Levels have these review meanings:
+## Superseded documents
 
-| Level | Meaning |
-| --- | --- |
-| `MUST` | The change is non-compliant if the required behavior is absent. |
-| `MUST NOT` | The change is non-compliant if the prohibited behavior is present. |
-| `SHOULD` | The behavior is expected, but a valid, documented reason can justify an exception. |
-| `SHOULD NOT` | The behavior is discouraged, but a valid, documented reason can justify it. |
-| `MAY` | The behavior is permitted. The rule supplies guidance and MUST NOT fail a review by itself. |
+A document with `superseded_by` is not enforced and does not become a rule. The
+replacement document is discovered and enforced through its own path. The
+loader does not build aliases, does not follow alias chains, and does not
+validate alias cycles or missing targets. Alias chain validation and
+alias-based suppression will be implemented with suppressions, not before them.
 
-The `description` SHOULD use language that agrees with `level`. For example, a
-`MUST NOT` rule should state what is prohibited. The level field is authoritative
-if the description uses different requirement language.
+## Lifecycle
 
-### File applicability
+The loader enforces a document only when:
 
-`applies_to` has this shape:
+- `status` is `stable`, and
+- `adr_status`, when present, is `accepted`.
+
+The loader skips `draft` documents and `deprecated` documents. It also does not
+enforce a document with `superseded_by`. These lifecycle skips are not
+warnings.
+
+## File applicability
+
+The folder mapping `applies_to` filter has this shape:
 
 ```yaml
 applies_to:
@@ -296,11 +372,14 @@ applies_to:
 | `include` | non-empty array of strings | No | Globs that select paths. The default is `**/*`. |
 | `exclude` | non-empty array of strings | No | Globs that remove paths selected by `include`. The default is an empty array. |
 
+In the list form, each entry carries this same filter plus an optional
+`documents` glob (see Target repository applicability).
+
 Paths are repository-relative and use `/` as the separator on all operating
 systems. A path applies to a rule when it matches at least one `include` glob
 and no `exclude` glob. Exclusion takes precedence over inclusion.
 
-Globs use these version 1 constructs:
+Globs use these constructs:
 
 | Construct | Meaning |
 | --- | --- |
@@ -313,7 +392,7 @@ Globs use these version 1 constructs:
 
 Globs MUST NOT depend on the host operating system. Matching is case-sensitive.
 Paths MUST NOT start with `/`, contain `.` or `..` path segments, or contain a
-backslash. Invalid or unsupported glob syntax MUST cause validation to fail.
+backslash. Invalid or unsupported glob syntax makes the configuration invalid.
 
 File applicability is an initial filter, not proof that a rule is relevant or
 compliant. The review agent can discard a selected rule after it examines the
@@ -323,108 +402,68 @@ change and its context.
 
 An implementation MUST resolve a configuration as follows:
 
-1. Load and validate the entry file and, when present, the lock file.
-2. Resolve each `extends` item in list order using a depth-first traversal. For
-   a tag or branch revision, get the commit from its lock entry.
-3. Skip a source if the same source was already resolved during this traversal.
-4. Add the rules from each extended file in their declared order.
-5. Add the rules from the file that contains the `extends` declaration in their
-   declared order.
-6. Reject duplicate rule IDs from different sources.
-7. Reject lock entries that do not correspond to a tag or branch in the
-   resolved graph.
+1. Load and validate the entry file.
+2. Resolve each source in list order. For a Git source, resolve the `branch` to
+   its current commit and fetch that commit through the cache.
+3. For each folder mapping, discover the markdown documents under the folder,
+   recursively, then keep the documents the folder `documents` filter selects.
+4. Parse each document's frontmatter. Skip an invalid document with a
+   warning. Skip documents that the lifecycle filters exclude, including
+   documents with `superseded_by`.
+5. Derive rule ids, with the source `id_prefix` when present, and reject
+   duplicates across all sources.
 
-The result is one ordered list of rules. Rule order is stable input for review
-and reporting, but it does not change rule priority or requirement level.
+The loader returns one `Resolution`: an ordered list of rules, the resolved
+Git commits, and the warnings. Rule order is stable input for review and
+reporting, but it does not change rule priority or requirement level.
 
-A local source is the same source when its canonical repository-relative path
-is the same. A Git source is the same source when its repository URL, resolved
-commit, and path are the same. This rule lets two extended files share a base
-file without adding that base file's rules twice.
+Failure to reach, fetch, or validate a source, or a mapped folder that does
+not exist in its bundle, MUST fail the complete configuration. An invalid
+document MUST NOT.
 
-An implementation MUST detect extension cycles and report the chain of files
-that forms the cycle. Failure to fetch, parse, validate, or resolve any source
-MUST fail the complete configuration. An implementation MUST NOT silently skip
-an invalid or unavailable source.
-
-The implementation SHOULD cache Git sources by repository and resolved commit.
-Cached content MUST be verified against the requested commit object ID before
-use.
+The implementation SHOULD cache Git sources by resolved commit, as specified
+in [Standards source cache](./cache.md). Cached content MUST be verified
+against the requested commit object ID before use.
 
 ## Validation and diagnostics
 
 Configuration processing has two phases:
 
-1. Validation checks the YAML structure and values in each file.
-2. Resolution loads all sources and checks constraints that apply to the
-   complete rule set, such as unique IDs and extension cycles.
+1. Validation checks the YAML structure and values of the entry file.
+2. Resolution loads the sources and their documents and checks constraints
+   that apply to the complete rule set, such as unique ids.
 
 Diagnostics SHOULD contain:
 
-- The source file or Git repository, requested revision, resolved commit, and
-  path.
-- The YAML path of the invalid value, such as `rules[2].level`.
+- The source directory or Git repository, requested `branch`, and resolved
+  commit.
+- The YAML path of the invalid value, such as `sources[0].folders`.
 - A concise reason and, when possible, the allowed values.
-- The extension chain when the error came from an extended file.
 
 YAML aliases and anchors MAY be accepted within one file. They MUST NOT change
 the validation rules. Duplicate mapping keys MUST cause validation to fail.
 
-### Machine-readable schemas
-
-Version 1 has two JSON Schema Draft 2020-12 schemas:
-
-- [`standards.schema.json`](../packages/standards/schemas/v1/standards.schema.json) validates
-  `.standards.yml` files and extended configuration files. Its canonical `$id`
-  is `https://getstandards.dev/schemas/v1/standards.schema.json`.
-- [`standards-lock.schema.json`](../packages/standards/schemas/v1/standards-lock.schema.json)
-  validates `.standards.lock` files. Its canonical `$id` is
-  `https://getstandards.dev/schemas/v1/standards-lock.schema.json`.
-
-The schemas ship with the package. `standards schema` prints the configuration
-schema and `standards schema lock` prints the lock-file schema, so an editor or
-external tool can read them without the canonical URL. To attach the schema to
-`.standards.yml` in an editor, add a first line with the canonical URL:
-
-```yaml
-# yaml-language-server: $schema=https://getstandards.dev/schemas/v1/standards.schema.json
-```
-
-These schemas are normative for document structure and scalar value formats.
-An implementation MUST also enforce the semantic validation and resolution
-rules in this specification. JSON Schema does not enforce:
-
-- Duplicate YAML mapping keys.
-- Local path containment after symbolic links are resolved.
-- Extension cycles or duplicate rule IDs within or across files.
-- Lock-entry key uniqueness across the `sources` array.
-- The complete Git tag and branch name grammar.
-- The existence or type of a Git object or reference.
-- The match between a mutable revision and its commit during a lock update.
-- Missing or unused lock entries across the resolved extension graph.
-- The complete version 1 glob grammar.
+OKF is the format authority for rule documents. Standards publishes no JSON
+Schema; the internal configuration schema and the frontmatter validation
+rules in this document are the reference.
 
 ## Versioning
 
 `version` identifies the configuration syntax, not the application version.
-An implementation MUST reject unsupported versions. Backward-compatible
-additions require a new version if version 1 readers would reject them as
-unknown fields. A file of one version MAY extend a file of another supported
-version; each file is validated using its declared version before all rules are
-resolved.
+An implementation MUST reject unsupported versions, including version 1.
+Version 1 configurations carried a `rules` list and an `extends` list; both
+are removed, together with the `.standards.lock` file.
 
-## Version 1 exclusions
+## Version 2 exclusions
 
-Version 1 does not define:
+Version 2 does not define:
 
+- Enforcement opt-out per document inside an enforced folder.
 - Rule overrides or repository-specific exceptions.
 - Variables, templates, or parameterized rule sets.
 - Conditional rules based on branches, labels, authors, or pull request
   metadata.
 - Inline scripts, commands, prompts, or executable checks.
-- Integrity schemes other than a pinned Git commit object ID.
-- The trust policy that decides whether review uses the base or head revision of
-  `.standards.yml`.
-
-These features can be specified separately after the core format and review
-security model are stable.
+- Pinning a source to a commit or tag.
+- The trust policy that decides whether review uses the base or head revision
+  of `.standards.yml`.

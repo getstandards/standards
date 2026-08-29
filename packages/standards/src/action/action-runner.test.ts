@@ -1,6 +1,6 @@
+import type { ReportedFinding } from "@getstandards/core";
 import { Octokit } from "@octokit/rest";
 import { describe, expect, it } from "vitest";
-import type { ReportedFinding } from "../review/review-report.js";
 import {
 	createCheckRun,
 	createFindingComments,
@@ -131,7 +131,8 @@ describe("createFindingComments", () => {
 		rule = "money.no-float",
 	): ReportedFinding => ({
 		rule,
-		level: "MUST NOT",
+		level: "MUST",
+		title: "Money must not be a floating-point number.",
 		path: "invoice.ts",
 		lines: [line, lastLine],
 		evidence: `const total = subtotal * 1.2 // ${rule}:${line}`,

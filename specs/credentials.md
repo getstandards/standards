@@ -174,7 +174,7 @@ credential exists. It MUST report the removal. When no credential is stored
 for that provider, it MUST report that state. Both cases exit with status
 `0`.
 
-An `auth` command MUST NOT modify the configuration, the lock file, or any
+An `auth` command MUST NOT modify the configuration or any
 other repository file.
 
 ## `auth status`
@@ -276,7 +276,7 @@ interactive session and MUST NOT be copied into automation.
 
 ## Security considerations
 
-- Credentials MUST NOT be stored in the configuration, the lock file, or the
+- Credentials MUST NOT be stored in the configuration or the
   source cache. [Standards configuration format](./configuration.md) and
   [Standards source cache](./cache.md) state the same constraints for their
   files.

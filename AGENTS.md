@@ -9,6 +9,19 @@
 
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`.
 
+## Packages
+
+| Package | Holds |
+| --- | --- |
+| `packages/core` (`@getstandards/core`) | Resolution, the review pipeline, and their types. No credential code. Specified in `specs/library.md`. |
+| `packages/standards` (`@getstandards/standards`) | The `standards` command line, the GitHub Action build, credentials, and terminal rendering. |
+| `packages/pi` (`@getstandards/pi`) | The pi extension that registers `/standards`. Specified in `specs/pi.md`. |
+
+Put pipeline behavior in the core, so every surface shares it. Keep
+credentials, rendering, and exit statuses in the surface that owns them.
+`@getstandards/core` is the supported surface; `@getstandards/core/internal`
+exists for the command line and carries no compatibility promise.
+
 ## TypeScript Exports
 
 Use `export type` for type-only exports. This is required for Bun compatibility:

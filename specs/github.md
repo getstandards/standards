@@ -140,8 +140,8 @@ example in an `if:` condition or a notification step:
 | Output | Meaning |
 | --- | --- |
 | `conclusion` | The review conclusion: `compliant` or `non-compliant`. |
-| `blocking-count` | The number of confirmed `MUST` and `MUST NOT` findings. |
-| `warning-count` | The number of confirmed `SHOULD` and `SHOULD NOT` findings. |
+| `blocking-count` | The number of confirmed `MUST` findings. |
+| `warning-count` | The number of confirmed `SHOULD` findings. |
 | `total-cost` | The total cost of the review in United States dollars, with four decimal places, such as `0.0523`. The report's `cost_basis` states whether the value is a charge or an estimate. |
 | `report-file` | The path of the JSON review report on the runner. |
 
@@ -163,8 +163,8 @@ counted; it stays visible in the report.
 One run reviews one pull request head:
 
 1. Create a check run named `Standards` for the head commit, in progress.
-2. Resolve the configuration, the lock file, and the selected models, and
-   run the review pipeline defined in [Standards review](./review.md).
+2. Resolve the configuration, its knowledge sources, and the selected models,
+   and run the review pipeline defined in [Standards review](./review.md).
 3. Write the report to the step log.
 4. Complete the check run with the conclusion and the report as its summary.
 5. Create one finding comment per new confirmed finding.
@@ -280,10 +280,10 @@ it stays visible in the report, as defined in
 [Standards suppressions](./suppressions.md).
 
 The comment body is short prose under the annotated lines. It opens with a
-severity emoji — 🛑 for `MUST` and `MUST NOT`, 🟡 otherwise — and the `reason`
-in bold. When the finding has an applicable suggested change, a GitHub
-`suggestion` code block follows the reason. The rule's `guidance` follows as a
-💡 line and each of its `references` as a 📚 line, when present. A footer
+severity emoji — 🛑 for `MUST`, 🟡 otherwise — and the `reason` in bold. When
+the finding has an applicable suggested change, a GitHub `suggestion` code
+block follows the reason. The finding's `suggestion` follows as a
+💡 line, when present. A footer
 carries the `level`, the rule `id`, and the product name, so the headline stays
 pure prose. The comment MUST NOT quote the `evidence`: the annotated lines sit
 directly above it. Example:
@@ -297,10 +297,9 @@ Floating-point rounding can produce incorrect payment amounts.**
 const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);
 ```
 
-💡 Use the Money value object or an integer in the smallest currency unit.
-📚 [engineering.example.com/decisions/money-values](https://engineering.example.com/decisions/money-values)
+💡 Compute the total in minor units and wrap it in the Money value object.
 
-<sub>MUST NOT · `payments.no-floating-point-money` · Standards review</sub>
+<sub>MUST · `payments.no-floating-point-money` · Standards review</sub>
 ````
 
 A suggested change is applicable when all these conditions are true:
@@ -360,11 +359,11 @@ report data in this order. A section with no entries MUST NOT render:
    `level`, and linked location.
 4. Findings without a finding comment — findings whose location could not
    be anchored to the diff — expanded, blocking first. An expanded finding
-   shows its rule `id` and `level`, its `path` and `lines` as a link, the
-   `evidence` quote in a `diff` code block as an added line, the `reason`,
-   the suggested change as a plain replacement block when present,
-   and the rule's `guidance` and `references` when present, set off as a quoted
-   fix block. The replacement block MUST NOT use GitHub's `suggestion` type
+   shows its rule `id`, `level`, and `title`, its `path` and `lines` as a
+   link, the `evidence` quote in a `diff` code block as an added line, the
+   `reason`, the suggested change as a plain replacement block when present,
+   and the finding's `suggestion` when present, set off as a quoted fix
+   block. The replacement block MUST NOT use GitHub's `suggestion` type
    because it is not attached to an applicable diff range.
 5. Suppressed findings as a table: rule `id`, `level`, linked location, and
    the marker's reason, with a note that a suppressed finding was not
@@ -467,9 +466,9 @@ a setup error: the action MUST fail with a diagnostic that names the missing
 inputs.
 
 The action MUST NOT be used with the `pull_request_target` event. That event
-hands repository secrets to a run whose review reads `.standards.yml`, the
-lock file, and the rules from the fork's head revision, and the change
-content itself is untrusted input to the agents. Reviews of fork pull
+hands repository secrets to a run whose review reads `.standards.yml` and
+the rules from the fork's head revision, and the change content itself is
+untrusted input to the agents. Reviews of fork pull
 requests wait for the trust policy excluded by
 [Standards configuration format](./configuration.md).
 

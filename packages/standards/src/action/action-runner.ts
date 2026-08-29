@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { ReportedFinding } from "@getstandards/core";
+import { runGitOutput } from "@getstandards/core/internal";
 import { Octokit } from "@octokit/rest";
-import type { ReportedFinding } from "../review/review-report.js";
-import { runGitOutput } from "../utils/git.js";
 import type { ActionInputs } from "./action-inputs.js";
 import { parseActionInputs } from "./action-inputs.js";
 import {

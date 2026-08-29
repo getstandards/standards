@@ -1,9 +1,10 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { ConfigurationLoadError } from "../../config/configuration-loader.js";
-import { ConfigurationResolutionError } from "../../config/configuration-resolver.js";
-import { LockfileLoadError } from "../../lockfile/lockfile-loader.js";
-import { errorMessage } from "../../utils/errors.js";
+import { ConfigurationResolutionError } from "@getstandards/core";
+import {
+	ConfigurationLoadError,
+	errorMessage,
+} from "@getstandards/core/internal";
 
 interface DiagnosticDetails {
 	category: string;
@@ -25,10 +26,10 @@ function problemWithoutLocation(
 	return message.startsWith(prefix) ? message.slice(prefix.length) : message;
 }
 
-/** Suggest a correction for a configuration or lock-file field. */
+/** Suggest a correction for a configuration field. */
 function fieldNextAction(source: string, field: string | undefined): string {
 	if (field === "version") {
-		return `Set 'version' to 1 in '${source}', then run 'standards validate' again.`;
+		return `Set 'version' to 2 in '${source}', then run 'standards validate' again.`;
 	}
 	if (field !== undefined) {
 		return `Correct '${field}' in '${source}', then run 'standards validate' again.`;
@@ -38,31 +39,26 @@ function fieldNextAction(source: string, field: string | undefined): string {
 
 /** Suggest a correction for a configuration-resolution failure. */
 function resolutionNextAction(message: string): string {
-	if (message.includes(".standards.yml") && message.includes("Cannot access")) {
-		return "Create '.standards.yml' at the repository root and define configuration version 1.";
+	if (message.includes(".standards.yml") && message.includes("Cannot read")) {
+		return "Create '.standards.yml' at the repository root and define configuration version 2.";
 	}
-	if (
-		message.includes("uses a tag or branch") &&
-		message.includes("does not exist")
-	) {
-		return "Create '.standards.lock' with an entry for each tag or branch source.";
+	if (message.includes("Keep one entry file")) {
+		return "Remove '.standards.yml' or '.standards.yaml' so one entry file remains.";
 	}
-	if (message.includes("Lock file has no entry")) {
-		return "Add the missing tag or branch source to '.standards.lock'.";
-	}
-	if (message.includes("is not used by the configuration graph")) {
-		return "Remove the unused source entry from '.standards.lock'.";
-	}
-	if (message.includes("extension cycle")) {
-		return "Remove one 'extends' reference from the reported cycle.";
+	if (message.includes("does not exist in knowledge source")) {
+		return "Map a 'folder' that exists in the knowledge source, or remove the mapping.";
 	}
 	if (message.includes("duplicates the rule")) {
-		return "Give every resolved rule a unique 'id'.";
+		return "Rename one of the documents so every derived rule id is unique.";
 	}
-	if (message.includes("Cannot fetch Git repository")) {
-		return "Verify the repository URL, credentials, network access, and locked commit.";
+	if (
+		message.includes("Cannot reach Git repository") ||
+		message.includes("Cannot fetch Git repository") ||
+		message.includes("does not exist in")
+	) {
+		return "Verify the repository URL, branch, credentials, and network access.";
 	}
-	return "Check the reported extension paths and lock-file entries, then run 'standards validate' again.";
+	return "Check the reported knowledge sources and folder mappings, then run 'standards validate' again.";
 }
 
 /** Indent every line in a diagnostic section. */
@@ -119,21 +115,6 @@ export async function formatValidationError<Thrown>(
 	if (error instanceof ConfigurationLoadError) {
 		return renderDiagnostic({
 			category: "Configuration validation",
-			repository,
-			source: error.sourceName,
-			field: error.yamlPath,
-			problem: problemWithoutLocation(
-				error.message,
-				error.sourceName,
-				error.yamlPath,
-			),
-			nextAction: fieldNextAction(error.sourceName, error.yamlPath),
-		});
-	}
-
-	if (error instanceof LockfileLoadError) {
-		return renderDiagnostic({
-			category: "Lock-file validation",
 			repository,
 			source: error.sourceName,
 			field: error.yamlPath,

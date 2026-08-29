@@ -1,16 +1,13 @@
 import { parseArgs } from "node:util";
+import { errorMessage } from "@getstandards/core/internal";
 import { z } from "zod/v4";
-import { schemaTargets } from "../schema/schema-files.js";
-import { errorMessage } from "../utils/errors.js";
 import { renderCommandHelp } from "./cli-help.js";
 
 export const cliCommandSchema = z.enum([
 	"init",
 	"validate",
-	"lock",
 	"review",
 	"cache",
-	"schema",
 	"auth",
 	"models",
 ]);
@@ -25,10 +22,6 @@ export const authSubcommandSchema = z.enum(["login", "logout", "status"]);
 
 export type AuthSubcommand = z.infer<typeof authSubcommandSchema>;
 
-export const schemaTargetSchema = z.enum(schemaTargets);
-
-export type SchemaTarget = z.infer<typeof schemaTargetSchema>;
-
 export const reviewFormatSchema = z.enum(["text", "json"]);
 
 export type ReviewFormat = z.infer<typeof reviewFormatSchema>;
@@ -37,7 +30,7 @@ export type ReviewFormat = z.infer<typeof reviewFormatSchema>;
 const REVIEW_ERROR_STATUS = 2;
 
 /** Commands that read from or write to the persistent source cache. */
-const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "lock", "review"];
+const CACHE_AWARE_COMMANDS: CliCommand[] = ["validate", "review"];
 
 /** The `auth` subcommands that take one optional model provider argument. */
 const PROVIDER_AUTH_SUBCOMMANDS: AuthSubcommand[] = ["login", "logout"];
@@ -55,7 +48,14 @@ export interface ReviewCliArgs {
 	/** Repository-relative file or directory paths that limit the review. */
 	targets: string[];
 	base?: string;
+	/** A `<base>..<head>` or `<base>...<head>` Git commit range. */
+	range?: string;
+	staged: boolean;
 	all: boolean;
+	/** Limit the rule set to the rule with this exact id. */
+	rule?: string;
+	/** Limit the rule set to the rules of this mapped folder. */
+	folder?: string;
 	format: ReviewFormat;
 	model?: string;
 	evaluationModel?: string;
@@ -68,7 +68,6 @@ export interface ParsedCliArgs {
 	command?: CliCommand;
 	cacheSubcommand?: CacheSubcommand;
 	authSubcommand?: AuthSubcommand;
-	schemaTarget?: SchemaTarget;
 	provider?: string;
 	review?: ReviewCliArgs;
 	models?: ModelsCliArgs;
@@ -107,7 +106,11 @@ function parseRawCliArguments(arguments_: readonly string[]) {
 				"cache-dir": { type: "string" },
 				"no-cache": { type: "boolean", default: false },
 				base: { type: "string" },
+				range: { type: "string" },
+				staged: { type: "boolean", default: false },
 				all: { type: "boolean", default: false },
+				rule: { type: "string" },
+				folder: { type: "string" },
 				verbose: { type: "boolean", default: false },
 				format: { type: "string" },
 				model: { type: "string" },
@@ -157,7 +160,11 @@ export function parseCliArgs(
 	const parsedCommand = commandResult.data;
 	const reviewValues: ReviewOptionValues = {
 		base: parsed.values.base,
+		range: parsed.values.range,
+		staged: Boolean(parsed.values.staged),
 		all: Boolean(parsed.values.all),
+		rule: parsed.values.rule,
+		folder: parsed.values.folder,
 		verbose: Boolean(parsed.values.verbose),
 		format: parsed.values.format,
 		model: parsed.values.model,
@@ -199,10 +206,6 @@ export function parseCliArgs(
 		return parseCacheCommand(commandArguments, cacheDir, noCache);
 	}
 
-	if (parsedCommand === "schema") {
-		return parseSchemaCommand(commandArguments, cacheDir, noCache);
-	}
-
 	if (parsedCommand === "auth") {
 		return parseAuthCommand(commandArguments, cacheDir, noCache);
 	}
@@ -232,7 +235,11 @@ export function parseCliArgs(
 /** The raw review option values read from the parsed arguments. */
 interface ReviewOptionValues {
 	base?: string;
+	range?: string;
+	staged: boolean;
 	all: boolean;
+	rule?: string;
+	folder?: string;
 	verbose: boolean;
 	format?: string;
 	model?: string;
@@ -253,7 +260,11 @@ function rejectReviewOnlyOptions(
 ): void {
 	const givenOptions: [string, boolean][] = [
 		["--base", values.base !== undefined],
+		["--range", values.range !== undefined],
+		["--staged", values.staged],
 		["--all", values.all],
+		["--rule", values.rule !== undefined],
+		["--folder", values.folder !== undefined],
 		["--verbose", values.verbose],
 		["--format", values.format !== undefined],
 		["--model", values.model !== undefined],
@@ -277,9 +288,26 @@ function parseReviewCommand(
 	cacheDir: string | undefined,
 	noCache: boolean,
 ): ParsedCliArgs {
-	if (values.all && values.base !== undefined) {
+	// The scope options each select the whole change, so they cannot combine.
+	const givenScopeOptions = (
+		[
+			["--all", values.all],
+			["--base", values.base !== undefined],
+			["--range", values.range !== undefined],
+			["--staged", values.staged],
+		] as const
+	)
+		.filter(([, isGiven]) => isGiven)
+		.map(([name]) => name);
+	if (givenScopeOptions.length > 1) {
 		throw new CliArgumentError(
-			"Command 'review' does not accept '--all' and '--base' together.",
+			`Command 'review' does not accept '${givenScopeOptions[0]}' and '${givenScopeOptions[1]}' together.`,
+			REVIEW_ERROR_STATUS,
+		);
+	}
+	if (values.rule !== undefined && values.folder !== undefined) {
+		throw new CliArgumentError(
+			"Command 'review' does not accept '--rule' and '--folder' together: '--rule' already names one rule.",
 			REVIEW_ERROR_STATUS,
 		);
 	}
@@ -295,7 +323,11 @@ function parseReviewCommand(
 		review: {
 			targets,
 			base: values.base,
+			range: values.range,
+			staged: values.staged,
 			all: values.all,
+			rule: values.rule,
+			folder: values.folder,
 			format: formatResult.data,
 			model: values.model,
 			evaluationModel: values.evaluationModel,
@@ -385,52 +417,6 @@ function parseModelsCommand(
 	return {
 		command: "models",
 		models: { provider, all },
-		noCache: false,
-		help: false,
-	};
-}
-
-/** Parse the arguments and options of the `schema` command. */
-function parseSchemaCommand(
-	commandArguments: string[],
-	cacheDir: string | undefined,
-	noCache: boolean,
-): ParsedCliArgs {
-	if (cacheDir !== undefined) {
-		throw new CliArgumentError(
-			"Command 'schema' does not accept the '--cache-dir' option.",
-		);
-	}
-	if (noCache) {
-		throw new CliArgumentError(
-			"Command 'schema' does not accept the '--no-cache' option.",
-		);
-	}
-
-	const [target, ...rest] = commandArguments;
-	if (rest.length > 0) {
-		throw new CliArgumentError(
-			"Command 'schema' accepts at most one target argument.",
-		);
-	}
-
-	if (target === undefined) {
-		return {
-			command: "schema",
-			schemaTarget: "config",
-			noCache: false,
-			help: false,
-		};
-	}
-
-	const targetResult = schemaTargetSchema.safeParse(target);
-	if (!targetResult.success) {
-		throw new CliArgumentError(`Unknown schema target '${target}'.`);
-	}
-
-	return {
-		command: "schema",
-		schemaTarget: targetResult.data,
 		noCache: false,
 		help: false,
 	};

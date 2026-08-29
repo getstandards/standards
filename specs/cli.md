@@ -5,11 +5,17 @@ Defines the command-line interface for Standards.
 ## Purpose
 
 The Standards CLI lets users create a Standards configuration, validate,
-resolve, list, and test its rules, update its lock file, manage model provider
-credentials, list the usable model references, and review changes from a
-terminal or automation environment.
+resolve, list, and test its rules, manage model provider credentials, list
+the usable model references, and review changes from a terminal or automation
+environment.
 
-The CLI implementation MUST be defined in `src/cli`.
+The CLI implementation MUST be defined in `src/cli` of
+`@getstandards/standards`. The CLI runs resolution and review through
+`@getstandards/core`, defined in [Standards core library](./library.md). It
+owns credentials, terminal rendering, and exit statuses; it MUST NOT hold a
+copy of the pipeline. The change scope rules and the `--rule` and `--folder`
+filters specified below are implemented in the core, so every surface that
+runs a review compares the same change.
 
 ## Commands
 
@@ -19,12 +25,10 @@ The executable name is `standards`. It provides these commands:
 | --- | --- | --- |
 | `standards init` | Create an initial Standards configuration. | Implemented. |
 | `standards validate` | Validate the configuration and resolve its complete rule set. | Implemented. |
-| `standards lock` | Resolve mutable Git sources and update the lock file. | Implemented. `--check` is planned. |
 | `standards rules` | List the resolved rule set with each rule's origin. | Planned. |
 | `standards review` | Review changes against the resolved rule set. | Implemented. The pipeline is specified in [Standards review](./review.md). |
 | `standards test` | Run rule tests against the resolved rule set. | Planned. Specified in [Standards rule tests](./testing.md). |
 | `standards cache` | Manage the source cache. Groups the `clean` and `prune` subcommands. | Planned. |
-| `standards schema [config\|lock]` | Print a bundled JSON Schema to standard output. | Implemented. |
 | `standards auth` | Manage model provider credentials. Groups the `login`, `logout`, and `status` subcommands. | Implemented. |
 | `standards models [provider]` | List the model references that the configured providers make usable. | Implemented. |
 
@@ -33,7 +37,8 @@ The executable name is `standards`. It provides these commands:
 ## General behavior
 
 Running `standards` without a command or with `--help` or `-h` MUST print help
-to standard output and exit with status `0`. Root help MUST open with a banner
+to standard output and exit with status `0`. A bare invocation MUST NOT start
+a review, because a review spends model tokens. Root help MUST open with a banner
 that shows the Standards logo and the application version. It MUST list
 `cache` and `auth` as single commands. It MUST NOT list their subcommands;
 `standards cache --help` and `standards auth --help` print them. Running
@@ -46,22 +51,22 @@ An unknown command MUST print a diagnostic and the help text to standard error.
 It MUST exit with status `1`.
 
 A command accepts only the positional arguments and options listed for it in
-this specification. No command other than `cache`, `schema`, `auth`, `models`,
-and `review` accepts a positional argument. Supplying an argument or option
-that a command does not accept MUST print a diagnostic to standard error and
-exit with the command's error status defined below.
+this specification. No command other than `cache`, `auth`, `models`, and
+`review` accepts a positional argument. Supplying an argument or option that
+a command does not accept MUST print a diagnostic to standard error and exit
+with the command's error status defined below.
 
 ### Exit statuses
 
-`review`, `test`, `lock --check`, and `auth status` are checking commands:
-their result can be negative even though the command ran completely.
-Automation must separate a negative result from a broken run, so a checking
-command MUST use three statuses:
+`review`, `test`, and `auth status` are checking commands: their result can
+be negative even though the command ran completely. Automation must separate
+a negative result from a broken run, so a checking command MUST use three
+statuses:
 
 | Status | Meaning |
 | --- | --- |
-| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, an up-to-date lock file, at least one usable credential. |
-| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, a stale lock entry, no usable credential. |
+| `0` | The command ran completely and the result is positive: a compliant review, passing rule tests, at least one usable credential. |
+| `1` | The command ran completely and the result is negative: a non-compliant review, a failing rule test, no usable credential. |
 | `2` | The command could not run or complete: invalid arguments, invalid configuration, a missing credential, or a provider failure. |
 
 Every other command exits with status `0` on success and status `1` on any
@@ -77,8 +82,8 @@ These options control the source cache defined in
 
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
-| `--cache-dir <path>` | Use `<path>` as the cache directory instead of the default. | `validate`, `lock`, `rules`, `review`, `test`, `cache clean`, `cache prune` |
-| `--no-cache` | Do not read from or write to the persistent cache for this invocation. | `validate`, `lock`, `rules`, `review`, `test` |
+| `--cache-dir <path>` | Use `<path>` as the cache directory instead of the default. | `validate`, `rules`, `review`, `test`, `cache clean`, `cache prune` |
+| `--no-cache` | Do not read from or write to the persistent cache for this invocation. | `validate`, `rules`, `review`, `test` |
 
 `--cache-dir` MUST take priority over the `STANDARDS_CACHE_DIR` environment
 variable and over the `cache_dir` field of the settings file defined in
@@ -106,8 +111,12 @@ These options control command input and output:
 
 | Option | Meaning | Accepted by |
 | --- | --- | --- |
-| `--base <revision>` | Review the change since `<revision>` instead of the default base. | `review` |
-| `--all` | Run a full review: review every tracked file of the head revision. For `models`, list every known provider and every model id. | `review`, `models` |
+| `--base <revision>` | Review the working tree against `<revision>` instead of the default base. | `review` |
+| `--range <base>..<head>` | Review a commit range. | `review` |
+| `--staged` | Review only the staged changes. | `review` |
+| `--all` | Run a full review: review every file of the working tree. For `models`, list every known provider and every model id. | `review`, `models` |
+| `--rule <id>` | Limit the rule set to the rule with this exact id. | `review` |
+| `--folder <folder>` | Limit the rule set to the rules of one mapped folder. | `review` |
 | `--format <format>` | Output format: `text` (default) or `json`. | `review`, `rules` |
 | `--verbose` | Print detailed review progress to standard error. | `review` |
 
@@ -122,33 +131,56 @@ summary that a command writes to standard output.
 
 ## `init`
 
-`standards init` creates the entry file for a repository that has none.
+`standards init` creates the entry file for a repository that has none through
+an interactive dialogue.
 
-The command MUST create `.standards.yml` in the current working directory.
-The created file MUST be a valid version 1 configuration with an empty rule
-set, and SHOULD contain commented examples for `extends` and one rule.
+When standard input and standard output are terminals, the command MUST run an
+interactive dialogue that:
 
-On an interactive terminal, the command MAY prompt the user and write one
-rule from those prompts. When it adds a rule, the file keeps the commented
-examples and adds the rule to the `rules` list. Without an interactive
-terminal, the command MUST write the default file without prompting.
+1. Asks whether the knowledge source is local or Git.
+2. Asks for the local bundle root, or the Git repository, branch, and optional
+   bundle path.
+3. Scans the source and shows the folders that contain markdown documents with
+   their document counts. It MUST NOT propose semantic folder names.
+4. Lets the user select one or more folders, or enter folder paths manually
+   when the source cannot be scanned.
+5. Asks for the `MUST` or `SHOULD` level of each selected folder.
+6. Lets the user add document exclusions for a folder.
+7. Lets the user set a target repository `applies_to` filter for a folder.
+8. Asks for an optional `id_prefix`.
+9. Lets the user add another knowledge source.
+10. Shows the complete `.standards.yml` preview and asks for confirmation
+    before it writes the file.
 
-On success, the command MUST report the created path — and the rule's `id`
-when the user added one — and exit with status `0`.
+The command MUST NOT define a folder layout for the bundle: the user selects
+the folders and levels that apply.
 
-When `.standards.yml` already exists, the command MUST print a diagnostic and
-exit with status `1`. It MUST NOT modify the existing file. The command MUST
-NOT create a lock file; `standards lock` creates one when the configuration
-needs it.
+On success, the command MUST write `.standards.yml` in the current working
+directory, tell the user to run `standards validate`, and exit with status
+`0`. Cancellation MUST leave the repository unchanged.
+
+Without a terminal, the command MUST NOT write an empty or assumed
+configuration. It MUST report that interactive input is required, leave the
+repository unchanged, and exit with status `1`.
+
+When an entry file (`.standards.yml` or `.standards.yaml`) already exists, the
+command MUST print a diagnostic and exit with status `1`. It MUST NOT modify
+the existing file.
 
 ## `validate`
 
-`standards validate` MUST load `.standards.yml` from the current working
+`standards validate` MUST load the entry file from the current working
 directory and resolve its complete configuration graph as defined in
 [Standards configuration format](./configuration.md).
 
-On success, the command MUST print the canonical repository path, entry-file
-name, lock-file state, number of resolved rules, and rule counts grouped by
+On success, the command MUST print the canonical repository path and the
+entry-file name. It MUST list each knowledge source with its mapped folders and
+their levels, and each discovered rule with its derived id, level, and resolved
+`applies_to` scope, so the user can confirm exactly which documents became
+rules and which files each rule judges. An unscoped rule MUST show that it
+applies to every file. It MUST print the
+resolved commit of each Git source, the warnings for skipped knowledge
+documents, the number of resolved rules, and the rule counts grouped by
 requirement level. It MUST exit with status `0`.
 
 If configuration loading, validation, or resolution fails, the command MUST
@@ -159,82 +191,34 @@ The diagnostic MUST include:
 
 - The failure category.
 - The canonical repository path when it can be resolved.
-- The configuration or lock-file source when known.
+- The configuration source when known.
 - The YAML field path when known.
 - The original problem without duplicated source and field prefixes.
 - A relevant next action.
 
-The command MUST NOT modify the configuration, the lock file, or any other
-repository file.
-
-## `lock`
-
-`standards lock` MUST load `.standards.yml` from the current working directory
-and traverse its complete configuration graph. It MUST resolve each tag through
-its exact `refs/tags/` reference and each branch through its exact `refs/heads/`
-reference. It MUST NOT fall back to another reference type with the same name.
-
-For an annotated tag, the command MUST record the commit to which the tag
-ultimately points. A configuration source pinned directly to a commit MUST NOT
-produce a lock entry, but mutable sources discovered through that configuration
-MUST produce entries in the root lock file.
-
-The command MUST write `.standards.lock` at the canonical repository root.
-It MUST include exactly one entry for each distinct mutable source. Entries MUST
-be sorted by repository, revision type, and revision value. A configuration
-without mutable sources MUST produce a valid lock file with an empty `sources`
-array.
-
-The command MUST replace the lock file through a temporary sibling file. It
-MUST NOT rewrite the lock file when its generated content is unchanged.
-
-On success, the command MUST report whether the lock file changed, the
-repository and lock-file paths, and counts for all mutable sources, branches,
-and tags. It MUST exit with status `0`.
-
-If configuration traversal, Git resolution, or file writing fails, the command
-MUST print the problem and a relevant next action to standard error. It MUST
-exit with status `1` and MUST NOT replace the existing lock file with partial
-content.
-
-### `lock --check`
-
-`standards lock --check` answers one question for automation: is the lock
-file still what `standards lock` would write today? The command MUST perform
-the same traversal and reference resolution as `lock`, but MUST NOT write or
-modify any file.
-
-- When every resolved commit matches its lock entry, and no entry is missing
-  or unused, the command MUST report the up-to-date state and exit with
-  status `0`.
-- Otherwise the command MUST report each difference — the repository, the
-  revision, the locked commit, and the newly resolved commit, or the missing
-  or unused entry — and exit with status `1`.
-- When traversal or resolution fails, the command MUST print the problem and
-  exit with status `2`.
-
-A stale result is information, not an update. A user adopts the change by
-running `standards lock` and committing the diff.
+The command MUST NOT modify the configuration or any other repository file.
 
 ## `rules`
 
 `standards rules` lists the resolved rule set, so that a user can audit which
 rules apply to a repository and where each one came from.
 
-The command MUST load `.standards.yml` from the current working directory and
+The command MUST load the entry file from the current working directory and
 resolve its complete configuration graph, exactly as `validate` does. It MUST
 print every resolved rule in resolution order with:
 
 - The rule `id` and `level`.
-- The rule's source: the repository-relative path for a local source, or the
-  repository, revision, resolved commit, and path for a Git source.
+- The rule's resolved `applies_to` scope, or that the rule applies to every
+  file.
+- The rule's source: the document path for a local source, or the repository,
+  `branch`, resolved commit, and document path for a Git source.
 
 With `--format json`, the command MUST print the resolved rules as one JSON
 document, each rule with its complete fields and its source.
 
 The command exits with status `0` on success and status `1` when resolution
 fails, with the same diagnostics as `validate`. It MUST NOT modify the
-configuration, the lock file, or any other repository file.
+configuration or any other repository file.
 
 ## `review`
 
@@ -243,20 +227,52 @@ configuration, the lock file, or any other repository file.
 directory.
 
 Running `standards review --help` or `standards review -h` MUST print the
-review help text, which lists the review options and the current default
-models, to standard output and exit with status `0`.
+review help text, which lists the review options, example invocations, and
+the current default models, to standard output and exit with status `0`. The
+examples MUST show the default scope and at least one other scope option.
 
-The head revision is the checkout's `HEAD`. The base revision resolves in
-this priority order:
+### Change scope
 
-1. The `--all` option, which selects the empty tree as the base revision.
-2. The `--base <revision>` option, accepting any revision that Git can
-   resolve.
-3. The merge base of `HEAD` and the remote default branch.
+A review compares exactly one change scope, defined in
+[Standards review](./review.md). The scope options select it:
 
-When neither `--all` nor `--base` is given and the merge base cannot be
-resolved, the command MUST fail with a diagnostic that asks for `--base` or
-`--all` and exit with status `2`.
+| Invocation | Scope | Meaning |
+| --- | --- | --- |
+| `standards review` | `working-tree` | Review the current branch against the merge base of `HEAD` and the remote default branch. All uncommitted changes are included. |
+| `standards review --base <revision>` | `working-tree` | The same, with `<revision>` as the base. |
+| `standards review --staged` | `staged` | Review only the staged changes. |
+| `standards review --range <base>..<head>` | `commits` | Review a commit range. |
+| `standards review --all` | `working-tree` | Full audit: the base is the empty tree, so every tracked and untracked file counts as added. |
+
+The scope options `--all`, `--base`, `--range`, and `--staged` are mutually
+exclusive. An invocation that gives more than one MUST fail with a diagnostic
+that names the two options and exit with status `2`.
+
+Without a scope option, the base revision is the merge base of `HEAD` and the
+remote default branch (`refs/remotes/origin/HEAD`). When that merge base
+cannot be resolved, the command MUST fail with a diagnostic that asks for
+`--base`, `--range`, or `--all` and exit with status `2`.
+
+Every scope requires a repository with at least one commit. `HEAD` failing to
+resolve MUST produce a diagnostic and exit with status `2`.
+
+### `review --range <base>..<head>`
+
+`--range` accepts the Git range forms:
+
+- `A..B`: the base is `A`, the head is `B`. Example: `main..HEAD`,
+  `HEAD~3..HEAD`.
+- `A...B`: the base is the merge base of `A` and `B`, the head is `B`.
+
+Both revisions MUST resolve to commits. A value without `..`, with an empty
+side, or with an unresolvable revision MUST produce a diagnostic that shows
+the expected form and exit with status `2`.
+
+The agents read extra context from the working tree. When the range head is
+not the checked-out commit, that context can disagree with the reviewed
+change, as [Standards review](./review.md) states. The command does not check
+out the range head. The same applies to `--staged` when the working tree
+differs from the index.
 
 ### Targets
 
@@ -267,12 +283,18 @@ target is a repository-relative path to a file or a directory.
 - A directory target selects every changed file under that path.
 - Without targets, the review selects every changed file.
 
-Targets filter the changed files. They do not change the base or head
-revision, so they combine with `--base` and with `--all`.
-`standards review --all <dir>` audits the tracked files under `<dir>`.
+Targets filter the changed files. They do not change the scope, so they
+combine with every scope option and with the rule set options.
+`standards review --all <dir>` audits the files under `<dir>`.
 
-A target MUST exist in the head revision, or match a deleted file's base
-path. For an invalid target, the command MUST print a diagnostic and exit
+A target MUST exist on the scope's head side, or match a deleted file's base
+path:
+
+- `commits`: the target exists in the head commit.
+- `working-tree`: the target exists in the working tree.
+- `staged`: the target exists in the index.
+
+For an invalid target, the command MUST print a diagnostic and exit
 with status `2`. A valid target that matches no changed file is not an
 error: it can produce an empty selection, which ends the review with a
 compliant conclusion and zero model tokens, as defined in
@@ -282,16 +304,49 @@ compliant conclusion and zero model tokens, as defined in
 
 `standards review --all` runs a full review, as defined in
 [Standards review](./review.md): the base revision is the empty tree, so
-the change contains every tracked file of the head revision as an added
-file. The pipeline, the report, and the exit statuses are unchanged.
-
-`--all` and `--base` select the same input, so an invocation that gives
-both MUST fail with a diagnostic and exit with status `2`.
+the change contains every file of the working tree as an added file,
+untracked files included. The pipeline, the report, and the exit statuses are
+unchanged.
 
 A full review reads the whole repository through the selected models and
 costs tokens in proportion to the repository size. The command MUST report
 the number of selected files and evaluation tasks to standard error before
 the evaluation step starts.
+
+### `review --rule <id>` and `review --folder <folder>`
+
+`--rule <id>` limits the resolved rule set to the rule with that exact id
+before selection runs. An id that matches no resolved rule MUST produce a
+diagnostic and exit with status `2`; the next action names `standards
+validate` as the command that lists the resolved rule ids.
+
+`--folder <folder>` limits the resolved rule set to the rules that a folder
+mapping with that folder name produced, for example `--folder decisions` with
+the mapping `folders: { decisions: MUST }`. A name that matches no mapped
+folder MUST produce a diagnostic that lists the mapped folder names and exit
+with status `2`.
+
+`--rule` and `--folder` are mutually exclusive: `--rule` already names one
+rule. Giving both MUST fail with a diagnostic and exit with status `2`.
+
+Both options combine with every scope and with targets:
+
+```
+standards review src/foo.ts --rule clickhouse.2026-08-26-ttl-v2
+```
+
+reviews only the changed hunks of `src/foo.ts` against that one rule. To
+check a whole file against one rule regardless of changes:
+
+```
+standards review --all src/foo.ts --rule clickhouse.2026-08-26-ttl-v2
+```
+
+This is the cheap loop for testing a rule while writing it.
+
+Both options shrink the rule set before the pipeline runs, so the report's
+`resolved_rules` count reflects the filtered set. The report format version
+does not change.
 
 The command MUST write the report to standard output: the text rendering by
 default, or the machine-readable report with `--format json`, as defined in
@@ -326,7 +381,8 @@ prints only the report and the progress that this specification requires.
 
 The verbose output MUST include the items that the review reaches:
 
-- The base revision, the head revision, and the targets.
+- The change scope and the targets: the base revision, and `working tree`,
+  `index`, or the head commit as the head.
 - The changed files that the targets select, and the rules that selection
   assigns to each file.
 - The evaluation tasks that planning packs, and the rules in each task.
@@ -362,32 +418,17 @@ directory. It MUST report the removed location and exit with status `0`. If the
 cache directory does not exist, it MUST report that state and exit with status
 `0`.
 
-`standards cache prune` MUST load `.standards.yml` and, when present, its lock
-file from the current working directory, compute the commit object IDs that
-the resolved configuration graph references, and remove every source cache
-entry whose commit is not in that set. It MUST report the number of removed
-entries and exit with status `0`.
+`standards cache prune` MUST load the entry file from the current working
+directory, compute the commit object IDs that the resolved knowledge sources
+reference, and remove every source cache entry whose commit is not in that
+set. It MUST report the number of removed entries and exit with status `0`.
 
-A `cache` subcommand MUST NOT modify the configuration, the lock file, or any
-other repository file.
+A `cache` subcommand MUST NOT modify the configuration or any other
+repository file.
 
 If cache resolution, traversal, or removal fails, the command MUST print the
 problem and a relevant next action to standard error. It MUST exit with status
 `1`.
-
-## `schema`
-
-`standards schema` prints a bundled JSON Schema to standard output. It takes one
-optional positional argument that selects the target: `config` (default) prints
-the schema for `.standards.yml` and extended configuration files, and `lock`
-prints the schema for `.standards.lock`. The schemas are described in
-[Standards configuration format](./configuration.md).
-
-The command MUST write the selected schema to standard output and exit with
-status `0`. An unknown target MUST print a diagnostic to standard error and
-exit with status `1`. The command MUST NOT read the configuration, the lock
-file, the source cache, or the settings file, so it MUST NOT accept the
-`--cache-dir` or `--no-cache` option.
 
 ## `auth`
 
@@ -396,8 +437,8 @@ Running `standards auth` without a subcommand, or with `--help` or `-h`, MUST
 print the `auth` help text, which lists the `login`, `logout`, and `status`
 subcommands, to standard output and exit with status `0`.
 
-An `auth` subcommand MUST NOT modify the configuration, the lock file, or any
-other repository file.
+An `auth` subcommand MUST NOT modify the configuration or any other
+repository file.
 
 ### `auth login`
 
@@ -427,8 +468,8 @@ provider, it MUST report that state. Both cases exit with status `0`.
 ### `auth status`
 
 `standards auth status` reports the credential state of each model provider.
-The command is read only: it MUST NOT modify the configuration, the lock file,
-or any credential.
+The command is read only: it MUST NOT modify the configuration or any
+credential.
 
 For each provider with a usable credential, the command MUST print one line
 with the provider id, the credential state, and its source:

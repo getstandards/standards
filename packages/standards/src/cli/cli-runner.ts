@@ -1,20 +1,18 @@
-import { formatStandardsSettingsDiagnostic } from "../settings/settings-diagnostic.js";
-import { resolveStandardsSettingsPath } from "../settings/settings-file-location.js";
 import {
+	formatStandardsSettingsDiagnostic,
 	readStandardsSettingsFile,
+	resolveStandardsSettingsPath,
+	type StandardsSettings,
 	StandardsSettingsLoadError,
-} from "../settings/settings-loader.js";
-import type { StandardsSettings } from "../settings/settings-schema.js";
+} from "@getstandards/core";
 import { CliArgumentError, parseCliArgs } from "./cli-args.js";
 import type { CliOutput, CommandContext } from "./cli-context.js";
 import { renderCommandHelp, renderHelp } from "./cli-help.js";
 import { runAuthCommand } from "./commands/auth.js";
 import { runCacheCommand } from "./commands/cache.js";
 import { runInitCommand } from "./commands/init.js";
-import { runLockCommand } from "./commands/lock.js";
 import { runModelsCommand } from "./commands/models-list.js";
 import { runReviewCommand } from "./commands/review.js";
-import { runSchemaCommand } from "./commands/schema.js";
 import { runValidateCommand } from "./commands/validate.js";
 import { VERSION } from "./version.js";
 
@@ -39,7 +37,6 @@ export async function runCli(
 		command,
 		cacheSubcommand,
 		authSubcommand,
-		schemaTarget,
 		provider,
 		review,
 		models,
@@ -67,7 +64,6 @@ export async function runCli(
 	// it holds. One rule keeps runs predictable (specs/settings.md).
 	const commandReadsSettings =
 		command === "validate" ||
-		command === "lock" ||
 		command === "review" ||
 		(command === "cache" && cacheSubcommand !== undefined);
 
@@ -106,17 +102,19 @@ export async function runCli(
 				return await runInitCommand(context);
 			case "validate":
 				return await runValidateCommand(context);
-			case "lock":
-				return await runLockCommand(context);
 			case "review":
 				return await runReviewCommand(
 					context,
-					review ?? { targets: [], all: false, format: "text", verbose: false },
+					review ?? {
+						targets: [],
+						staged: false,
+						all: false,
+						format: "text",
+						verbose: false,
+					},
 				);
 			case "cache":
 				return await runCacheCommand(context, cacheSubcommand);
-			case "schema":
-				return await runSchemaCommand(context, schemaTarget);
 			case "auth":
 				return await runAuthCommand(context, authSubcommand, provider);
 			case "models":

@@ -1,6 +1,5 @@
+import { modelReferenceSchema, type ReviewReport } from "@getstandards/core";
 import { describe, expect, it } from "vitest";
-import { modelReferenceSchema } from "../review/model-reference.js";
-import type { ReviewReport } from "../review/review-report.js";
 import {
 	FINDING_MARKER_PATTERN,
 	findingFingerprint,
@@ -21,7 +20,7 @@ const context = {
 /** The report data of the specs/github.md comment example. */
 function exampleReport(): ReviewReport {
 	return {
-		version: 2,
+		version: 3,
 		conclusion: "non-compliant",
 		models: {
 			evaluation: modelReferenceSchema.parse("anthropic/claude-sonnet-5"),
@@ -48,22 +47,25 @@ function exampleReport(): ReviewReport {
 			total_cost: 0.0523,
 			cost_basis: "charged",
 		},
+		sources: [],
+		warnings: [],
 		findings: [
 			{
 				rule: "payments.no-floating-point-money",
-				level: "MUST NOT",
+				level: "MUST",
+				title: "Represent money as integer minor units.",
 				path: "src/billing/invoice.ts",
 				lines: [41, 44],
 				evidence: "const total: number = subtotal * 1.2",
 				reason: "The invoice total is computed as a floating-point number.",
 				suggested_change:
 					"const total = Money.fromMinorUnits((subtotalMinorUnits * 120) / 100);",
-				guidance: "Use the Money value object.",
-				references: ["https://engineering.example.com/decisions/money-values"],
+				suggestion: "Use the Money value object.",
 			},
 			{
 				rule: "security.no-secrets-in-code",
-				level: "MUST NOT",
+				level: "MUST",
+				title: "Never commit secrets in source code.",
 				path: "src/config/stripe.ts",
 				lines: [8, 8],
 				evidence: 'const stripeKey = "sk_live_x"',
@@ -72,6 +74,7 @@ function exampleReport(): ReviewReport {
 			{
 				rule: "api.problem-details-errors",
 				level: "SHOULD",
+				title: "Error responses use the problem details shape.",
 				path: "api/orders.yaml",
 				lines: [88, 95],
 				evidence: "error: { type: string }",
@@ -81,7 +84,8 @@ function exampleReport(): ReviewReport {
 		suppressed: [
 			{
 				rule: "payments.no-floating-point-money",
-				level: "MUST NOT",
+				level: "MUST",
+				title: "Represent money as integer minor units.",
 				path: "src/billing/estimate.ts",
 				lines: [12, 12],
 				evidence: "const estimate = price * 1.2",
@@ -128,7 +132,7 @@ describe("renderSummaryComment", () => {
 		const comment = renderSummaryComment(exampleReport(), context);
 		// Blocking findings come first in the overview numbering.
 		expect(comment).toContain(
-			"| 1 | `payments.no-floating-point-money` | 🛑 MUST NOT |",
+			"| 1 | `payments.no-floating-point-money` | 🛑 MUST |",
 		);
 		expect(comment).toContain(
 			"| 3 | `api.problem-details-errors` | ⚠️ SHOULD |",
@@ -153,6 +157,10 @@ describe("renderSummaryComment", () => {
 		expect(comment).toContain("could not be anchored");
 		// The expanded finding keeps its overview number.
 		expect(comment).toContain("#### 3. `api.problem-details-errors` — SHOULD");
+		// The rule statement follows the heading.
+		expect(comment).toContain(
+			"**Error responses use the problem details shape.**",
+		);
 		expect(comment).toContain("```diff\n+ error: { type: string }\n```");
 		// A partially anchored review does not claim every finding has one.
 		expect(comment).not.toContain(
@@ -165,6 +173,8 @@ describe("renderSummaryComment", () => {
 		expect(comment).toContain(
 			"📊 <b>Review details</b> — 24 rules resolved · 6 selected · 3 evaluation tasks · 47,150 tokens",
 		);
+		expect(comment).toContain("| 🛑 MUST | 2 |");
+		expect(comment).toContain("| ⚠️ SHOULD | 1 |");
 		expect(comment).toContain(
 			"| Evaluation | `anthropic/claude-sonnet-5` | 3 | 41,200 | 1,810 | $0.0421 |",
 		);
@@ -181,6 +191,52 @@ describe("renderSummaryComment", () => {
 		expect(comment).toContain(
 			"The cost is a list price estimate, not a charge.",
 		);
+	});
+
+	it("lists the resolved commit of each Git knowledge source", () => {
+		const report = exampleReport();
+		report.sources = [
+			{
+				repository: "https://github.com/acme/standards",
+				branch: "main",
+				commit: "b7e21aa000000000000000000000000000000000",
+			},
+		];
+		const comment = renderSummaryComment(report, context);
+		expect(comment).toContain("Knowledge sources:");
+		expect(comment).toContain(
+			"- `https://github.com/acme/standards` at `main`: `b7e21aa000000000000000000000000000000000`",
+		);
+	});
+
+	it("omits the knowledge sources list without a Git source", () => {
+		const comment = renderSummaryComment(exampleReport(), context);
+		expect(comment).not.toContain("Knowledge sources:");
+	});
+
+	it("renders the skipped documents callout after the verdict", () => {
+		const report = exampleReport();
+		report.warnings = [
+			{
+				document: "knowledge/decisions/money.md",
+				problem: "The document has no frontmatter block.",
+			},
+		];
+		const comment = renderSummaryComment(report, context);
+		expect(comment).toContain(
+			"> [!WARNING]\n> **1 knowledge document was skipped** and not enforced. Fix them in their knowledge repository:\n> - `knowledge/decisions/money.md` — The document has no frontmatter block.",
+		);
+		// The callout sits between the verdict and the overview table.
+		const calloutPosition = comment.indexOf("knowledge document was skipped");
+		expect(calloutPosition).toBeGreaterThan(comment.indexOf("> [!CAUTION]"));
+		expect(calloutPosition).toBeLessThan(
+			comment.indexOf("| # | Rule | Level | Location |"),
+		);
+	});
+
+	it("omits the skipped documents callout without warnings", () => {
+		const comment = renderSummaryComment(exampleReport(), context);
+		expect(comment).not.toContain("knowledge document");
 	});
 
 	it("keeps the overview table with one finding, omits empty sections", () => {
@@ -219,7 +275,7 @@ describe("renderFindingComment", () => {
 	const sourceAnchor = "const total: number = subtotal * 1.2";
 
 	it("starts with the fingerprint marker and renders the finding", () => {
-		const comment = renderFindingComment(finding(), context, sourceAnchor);
+		const comment = renderFindingComment(finding(), sourceAnchor);
 		const lines = comment.split("\n");
 		expect(lines[0]).toBe(
 			`<!-- standards:finding:v1:${findingFingerprint(finding().rule, finding().path, sourceAnchor)} -->`,
@@ -230,10 +286,7 @@ describe("renderFindingComment", () => {
 		);
 		expect(comment).toContain("💡 Use the Money value object.");
 		expect(comment).toContain(
-			"📚 [engineering.example.com/decisions/money-values](https://engineering.example.com/decisions/money-values)",
-		);
-		expect(comment).toContain(
-			"<sub>MUST NOT · `payments.no-floating-point-money` · Standards review</sub>",
+			"<sub>MUST · `payments.no-floating-point-money` · Standards review</sub>",
 		);
 		// The annotated lines sit directly above the comment.
 		expect(comment).not.toContain("Evidence");
@@ -241,7 +294,7 @@ describe("renderFindingComment", () => {
 	});
 
 	it("renders the suggestion block after the reason when applicable", () => {
-		const comment = renderFindingComment(finding(), context, sourceAnchor);
+		const comment = renderFindingComment(finding(), sourceAnchor);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**\n\n" +
 				"```suggestion\n" +
@@ -251,12 +304,7 @@ describe("renderFindingComment", () => {
 	});
 
 	it("retries without the suggestion block when includeSuggestion is false", () => {
-		const comment = renderFindingComment(
-			finding(),
-			context,
-			sourceAnchor,
-			false,
-		);
+		const comment = renderFindingComment(finding(), sourceAnchor, false);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**",
 		);
@@ -269,13 +317,13 @@ describe("renderFindingComment", () => {
 			...finding(),
 			suggested_change: "const a = 1;\n```\nconst b = 2;",
 		};
-		const comment = renderFindingComment(injected, context, sourceAnchor);
+		const comment = renderFindingComment(injected, sourceAnchor);
 		expect(comment).toContain("````suggestion\n");
 	});
 
 	it("omits the suggestion block when the complete comment is too large", () => {
 		const huge = { ...finding(), suggested_change: "x".repeat(70_000) };
-		const comment = renderFindingComment(huge, context, sourceAnchor);
+		const comment = renderFindingComment(huge, sourceAnchor);
 		expect(comment).toContain(
 			"🛑 **The invoice total is computed as a floating-point number.**",
 		);
@@ -287,7 +335,7 @@ describe("renderFindingComment", () => {
 		if (warning === undefined) {
 			throw new Error("The example report has three findings.");
 		}
-		const comment = renderFindingComment(warning, context, sourceAnchor);
+		const comment = renderFindingComment(warning, sourceAnchor);
 		expect(comment).toContain(
 			"🟡 **The error response defines an ad-hoc shape.**",
 		);
@@ -380,13 +428,38 @@ describe("renderCheckRunSummary", () => {
 		const order = [
 			"| # | Rule | Level | Location |",
 			"### 🛑 Blocking findings",
-			"#### 1. `payments.no-floating-point-money` — MUST NOT",
+			"#### 1. `payments.no-floating-point-money` — MUST",
 			"### ⚠️ Warnings",
 			"### 🔇 Suppressed",
 		];
 		const positions = order.map((section) => summary.indexOf(section));
 		expect(positions.every((position) => position >= 0)).toBe(true);
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+		// Each expanded finding states its rule right under the heading.
+		expect(summary).toContain(
+			"#### 1. `payments.no-floating-point-money` — MUST\n\n**Represent money as integer minor units.**",
+		);
+	});
+
+	it("renders the remediation suggestion as a fix block", () => {
+		const summary = renderCheckRunSummary(exampleReport(), context);
+		expect(summary).toContain(
+			"> 💡 **How to fix:** Use the Money value object.",
+		);
+	});
+
+	it("renders the skipped documents callout with plural wording", () => {
+		const report = exampleReport();
+		report.warnings = [
+			{ document: "a.md", problem: "p1" },
+			{ document: "b.md", problem: "p2" },
+		];
+		const summary = renderCheckRunSummary(report, context);
+		expect(summary).toContain(
+			"**2 knowledge documents were skipped** and not enforced.",
+		);
+		expect(summary).toContain("> - `a.md` — p1");
+		expect(summary).toContain("> - `b.md` — p2");
 	});
 
 	it("shows a suggested change as a plain replacement block", () => {

@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
-import type { Rule } from "../config/index.js";
-import { formatCost, type StepUsage } from "../review/agent-usage.js";
-import type { ReportedFinding, ReviewReport } from "../review/review-report.js";
+import {
+	formatCost,
+	type ReportedFinding,
+	type RequirementLevel,
+	type ReviewReport,
+	type StepUsage,
+} from "@getstandards/core";
 
 /**
  * The hidden marker that identifies the summary comment (specs/github.md).
@@ -88,12 +92,12 @@ export interface ReportRenderContext {
 }
 
 /** A finding's requirement level blocks the merge (specs/github.md). */
-function isBlockingLevel(level: Rule["level"]): boolean {
-	return level === "MUST" || level === "MUST NOT";
+function isBlockingLevel(level: RequirementLevel): boolean {
+	return level === "MUST";
 }
 
 /** The level emoji used by the comment tables and headings. */
-function levelEmoji(level: Rule["level"]): string {
+function levelEmoji(level: RequirementLevel): string {
 	return isBlockingLevel(level) ? "🛑" : "⚠️";
 }
 
@@ -212,32 +216,12 @@ function replacementBlock(replacement: string): string {
 	return `Suggested change:\n${fence}\n${replacement}\n${fence}`;
 }
 
-/** Render a rule's guidance and references as a quoted fix block. */
-function fixBlock(
-	context: ReportRenderContext,
-	finding: ReportedFinding,
-): string[] {
-	const lines: string[] = [];
-	if (finding.guidance !== undefined) {
-		lines.push(`> 💡 **How to fix:** ${finding.guidance}`);
+/** Render a finding's remediation suggestion as a quoted fix block. */
+function fixBlock(finding: ReportedFinding): string[] {
+	if (finding.suggestion === undefined) {
+		return [];
 	}
-	for (const reference of finding.references ?? []) {
-		lines.push(`> 📚 ${referenceLink(context, reference)}`);
-	}
-	return lines.length > 0 ? [lines.join("\n")] : [];
-}
-
-/** Render one rule reference as a link: a URL, or a repository path. */
-function referenceLink(
-	context: ReportRenderContext,
-	reference: string,
-): string {
-	if (/^https?:\/\//.test(reference)) {
-		const text = reference.replace(/^https?:\/\//, "");
-		return `[${text}](${reference})`;
-	}
-	const encodedPath = reference.split("/").map(encodeURIComponent).join("/");
-	return `[\`${reference}\`](${context.repositoryUrl}/blob/${context.headSha}/${encodedPath})`;
+	return [`> 💡 **How to fix:** ${finding.suggestion}`];
 }
 
 /** Render one expanded finding, as the blocking section shows it. */
@@ -248,13 +232,14 @@ function expandedFinding(
 ): string[] {
 	return [
 		`#### ${number}. \`${finding.rule}\` — ${finding.level}`,
+		`**${finding.title}**`,
 		locationSentence(context, finding),
 		evidenceBlock(finding.evidence),
 		finding.reason,
 		...(finding.suggested_change !== undefined
 			? [replacementBlock(finding.suggested_change)]
 			: []),
-		...fixBlock(context, finding),
+		...fixBlock(finding),
 	];
 }
 
@@ -268,6 +253,8 @@ function collapsedFinding(
 		"<details>",
 		`<summary><b>${number}.</b> <code>${finding.rule}</code> — ${finding.level} · <code>${locationText(finding.path, finding.lines)}</code></summary>`,
 		"",
+		`**${finding.title}**`,
+		"",
 		locationSentence(context, finding),
 		"",
 		evidenceBlock(finding.evidence),
@@ -276,7 +263,7 @@ function collapsedFinding(
 		...(finding.suggested_change !== undefined
 			? ["", replacementBlock(finding.suggested_change)]
 			: []),
-		...fixBlock(context, finding).flatMap((block) => ["", block]),
+		...fixBlock(finding).flatMap((block) => ["", block]),
 		"",
 		"</details>",
 	];
@@ -428,8 +415,8 @@ function detailsSection(report: ReviewReport): string {
 		[
 			"| Findings | Count |",
 			"| --- | ---: |",
-			`| 🛑 MUST / MUST NOT | ${blocking} |`,
-			`| ⚠️ SHOULD / SHOULD NOT | ${warnings} |`,
+			`| 🛑 MUST | ${blocking} |`,
+			`| ⚠️ SHOULD | ${warnings} |`,
 			`| 🔇 Suppressed | ${report.suppressed.length} |`,
 		].join("\n"),
 		"",
@@ -445,12 +432,46 @@ function detailsSection(report: ReviewReport): string {
 			`| Total | | | | | ${formatCost(report.usage.total_cost)} |`,
 		].join("\n"),
 		...costBasisNote(report).flatMap((note) => ["", note]),
+		...knowledgeSourcesList(report),
 		"",
 		"Every finding above was confirmed by an independent verification pass.",
 		"Rejected findings are not shown.",
 		"",
 		"</details>",
 	].join("\n");
+}
+
+/** List the resolved commit of each Git knowledge source, for traceability. */
+function knowledgeSourcesList(report: ReviewReport): string[] {
+	if (report.sources.length === 0) {
+		return [];
+	}
+	return [
+		"",
+		"Knowledge sources:",
+		...report.sources.map(
+			(source) =>
+				`- \`${source.repository}\` at \`${source.branch}\`: \`${source.commit}\``,
+		),
+	];
+}
+
+/** Render the callout that lists the knowledge documents the loader skipped. */
+function loaderWarningsSection(report: ReviewReport): string[] {
+	if (report.warnings.length === 0) {
+		return [];
+	}
+	const skippedPhrase = countPhrase(
+		report.warnings.length,
+		"knowledge document was skipped",
+		"knowledge documents were skipped",
+	);
+	const lines = report.warnings.map(
+		(warning) => `> - \`${warning.document}\` — ${tableCell(warning.problem)}`,
+	);
+	return [
+		`> [!WARNING]\n> **${skippedPhrase}** and not enforced. Fix them in their knowledge repository:\n${lines.join("\n")}`,
+	];
 }
 
 /** Render the footer that names the reviewed commits. */
@@ -482,7 +503,11 @@ function renderReportBody(
 	);
 	const numbered = [...blocking, ...warnings];
 
-	const sections: string[] = [heading, verdictCallout(report)];
+	const sections: string[] = [
+		heading,
+		verdictCallout(report),
+		...loaderWarningsSection(report),
+	];
 	if (numbered.length > 1) {
 		sections.push(overviewTable(context, numbered));
 	}
@@ -610,6 +635,7 @@ export function renderSummaryComment(
 		REPORT_COMMENT_MARKER,
 		heading,
 		verdictCallout(report, expanded.length === 0),
+		...loaderWarningsSection(report),
 	];
 	if (numbered.length > 0) {
 		sections.push(overviewTable(context, numbered));
@@ -638,8 +664,8 @@ export function renderSummaryComment(
  *
  * The comment is short prose under the annotated lines: a severity emoji
  * and the reason in bold, a GitHub `suggestion` block when the finding has
- * an applicable suggested change, the guidance and references as plain
- * lines, and a footer with the level and the rule id. It quotes no evidence
+ * an applicable suggested change, the remediation suggestion as a plain
+ * line, and a footer with the level and the rule id. It quotes no evidence
  * — the annotated lines sit directly above it. `anchor` is the finding's
  * source anchor, which the marker's fingerprint is computed from.
  * `includeSuggestion` is false for the retry after GitHub rejects a
@@ -651,36 +677,31 @@ export function renderSummaryComment(
  */
 export function renderFindingComment(
 	finding: ReportedFinding,
-	context: ReportRenderContext,
 	anchor: string,
 	includeSuggestion = true,
 ): string {
 	const withSuggestion =
 		includeSuggestion && finding.suggested_change !== undefined
-			? renderFindingCommentBody(finding, context, anchor, true)
+			? renderFindingCommentBody(finding, anchor, true)
 			: undefined;
 	const body =
 		withSuggestion !== undefined &&
 		withSuggestion.length <= SURFACE_CHARACTER_LIMIT
 			? withSuggestion
-			: renderFindingCommentBody(finding, context, anchor, false);
+			: renderFindingCommentBody(finding, anchor, false);
 	return clampSurface(body);
 }
 
 /** Render the complete finding comment for one include-suggestion choice. */
 function renderFindingCommentBody(
 	finding: ReportedFinding,
-	context: ReportRenderContext,
 	anchor: string,
 	includeSuggestion: boolean,
 ): string {
 	const emoji = isBlockingLevel(finding.level) ? "🛑" : "🟡";
 	const advice: string[] = [];
-	if (finding.guidance !== undefined) {
-		advice.push(`💡 ${finding.guidance}`);
-	}
-	for (const reference of finding.references ?? []) {
-		advice.push(`📚 ${referenceLink(context, reference)}`);
+	if (finding.suggestion !== undefined) {
+		advice.push(`💡 ${finding.suggestion}`);
 	}
 	const sections = [
 		`${emoji} **${finding.reason}**`,

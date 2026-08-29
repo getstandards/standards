@@ -17,7 +17,7 @@ export default defineConfig({
 					href: 'https://github.com/getstandards/standards',
 				},
 			],
-			sidebar: [{ label: 'JSON Schemas', link: 'schemas' }],
+			sidebar: [],
 		}),
 	],
 });

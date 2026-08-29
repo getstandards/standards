@@ -5,11 +5,11 @@ reports while it imports them.
 
 ## Purpose
 
-Standards imports rules from other Git repositories through the `extends`
-mechanism in [Standards configuration format](./configuration.md). Without a
-cache, every `validate`, `lock`, or `review` run clones each Git source again,
-even when the source has not changed. This wastes time and network for repeated runs and
-in automation.
+Standards imports rules from other Git repositories through the knowledge
+sources in [Standards configuration format](./configuration.md). Without a
+cache, every `validate` or `review` run clones each Git source again, even
+when the source has not changed. This wastes time and network for repeated
+runs and in automation.
 
 This document specifies:
 
@@ -30,23 +30,23 @@ document are to be interpreted as described by RFC 2119.
 
 ## Scope
 
-This document does not change the configuration format, the lock file format,
-or the resolution algorithm. A cache hit and a cache miss MUST resolve to the
-same rule set. The cache is an optimization and MUST NOT change which commit a
-source resolves to. Commit resolution is defined by the lock file in
+This document does not change the configuration format or the resolution
+algorithm. A cache hit and a cache miss MUST resolve to the same rule set.
+The cache is an optimization and MUST NOT change which commit a source
+resolves to. Commit resolution is defined in
 [Standards configuration format](./configuration.md).
 
-The cache does not change reference resolution. `lock` always contacts a
-repository to resolve a tag or branch. The cache avoids only repeated fetches
-of commit content.
+The cache does not change reference resolution. A run always contacts a
+repository to resolve a branch to its current commit. The cache avoids only
+repeated fetches of commit content.
 
 ## Cache correctness
 
-A Git source in a resolved configuration graph is always identified by a full
-commit object ID. A commit object ID names immutable content. Therefore the
-commit object ID is a complete and safe cache key, and a cache entry never needs
-invalidation for content change. A moved tag or branch produces a new commit
-during a lock update, which produces a new cache key.
+A resolved Git source is always identified by a full commit object ID. A
+commit object ID names immutable content. Therefore the commit object ID is a
+complete and safe cache key, and a cache entry never needs invalidation for
+content change. A moved branch resolves to a new commit at the start of the
+next run, which produces a new cache key.
 
 A cache entry holds checked-out files without Git metadata, so its content
 cannot be re-hashed against the commit object ID after checkout. Verification
@@ -103,9 +103,9 @@ presence is meaningful; it MAY be empty. Because the key is the commit alone,
 two repositories or two configurations that reference the same commit share one
 entry.
 
-The cache format version is independent of the configuration and lock file
-versions. An implementation MUST NOT read from or write to a bucket whose format
-version it does not support.
+The cache format version is independent of the configuration version. An
+implementation MUST NOT read from or write to a bucket whose format version it
+does not support.
 
 ## Cache read and write
 
@@ -168,19 +168,18 @@ directory. It MUST report the removed location and exit with status `0`. If the
 cache directory does not exist, it MUST report that state and exit with status
 `0`.
 
-`standards cache prune` MUST load the entry file and, when present, its lock
-file, compute the set of commit object IDs that the resolved configuration
-graph references, and remove every `git-v1` entry whose commit is not in that
-set. A configuration without mutable revisions does not require a lock file.
-The command MUST report the number of removed entries and exit with status `0`.
+`standards cache prune` MUST load the entry file, compute the set of commit
+object IDs that the resolved knowledge sources reference, and remove every
+`git-v1` entry whose commit is not in that set. The command MUST report the
+number of removed entries and exit with status `0`.
 
 The cache is machine-level and shared across projects. `standards cache prune`
 computes its reference set from one repository, so it can remove entries that
 other repositories on the same machine still reference. This removal is safe:
 the next run for an affected repository fetches the source again.
 
-A cache management command MUST NOT modify the configuration, the lock file, or
-any other repository file.
+A cache management command MUST NOT modify the configuration or any other
+repository file.
 
 ## Import output
 
@@ -189,15 +188,15 @@ a user or an automation log can see which repositories are contacted and whether
 the cache was used. Before this specification, the import phase was silent.
 
 The implementation MUST report one line for each distinct repository and
-revision that it resolves, and one line for each distinct repository and commit
+branch that it resolves, and one line for each distinct repository and commit
 that it imports. Sources that share a repository and commit but differ in
-`path` share one line. A line uses the requested revision and the resolved
+`path` share one line. A line uses the requested branch and the resolved
 short commit. The short commit is a prefix of the commit object ID with at
 least seven characters.
 
 | Situation | Reported action |
 | --- | --- |
-| `lock` resolves a tag or branch to a commit. | Resolving the repository and revision. |
+| A run resolves a branch to its current commit. | Resolving the repository and branch. |
 | An import reads a source from the persistent cache. | A cache hit for the repository and commit. |
 | An import fetches a source over the network. | A fetch for the repository and commit. |
 
@@ -210,9 +209,9 @@ Progress lines are plain text and MUST NOT require a terminal. A spinner or
 in-place update MAY be used when standard error is a terminal, but it MUST
 degrade to plain lines otherwise.
 
-The final summary that `lock` and `validate` already print is retained and is
-defined by [Standards CLI](./cli.md). Progress output is additional and MUST NOT
-replace that summary.
+The final summary that `validate` already prints is retained and is defined by
+[Standards CLI](./cli.md). Progress output is additional and MUST NOT replace
+that summary.
 
 ## Security considerations
 

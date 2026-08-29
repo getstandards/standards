@@ -1,4 +1,4 @@
-import type { StandardsSettings } from "../settings/settings-schema.js";
+import type { StandardsSettings } from "@getstandards/core";
 
 /** Output streams used by the CLI. */
 export interface CliOutput {

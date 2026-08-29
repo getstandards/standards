@@ -1,5 +1,5 @@
 import type { CredentialStore, Models } from "@earendil-works/pi-ai";
-import { errorMessage } from "../utils/errors.js";
+import { errorMessage } from "@getstandards/core/internal";
 import { credentialKindLabel } from "./login-method.js";
 
 /**

@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { errorMessage, runGit } from "@getstandards/core/internal";
 import { z } from "zod/v4";
-import { errorMessage } from "../utils/errors.js";
-import { runGit } from "../utils/git.js";
 
 /** The action could not run: its diagnostic is ready to print (specs/github.md). */
 export class ActionContextError extends Error {

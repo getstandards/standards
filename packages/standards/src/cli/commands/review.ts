@@ -1,16 +1,21 @@
-import { openRunGitSourceStore } from "../../cache/git-source-cache.js";
-import { createImportProgressReporter } from "../../cache/import-progress.js";
-import { loadRules } from "../../config/configuration-resolver.js";
-import type { Rule } from "../../config/index.js";
+import {
+	type ChangeScope,
+	createImportProgressReporter,
+	filterRuleSet,
+	loadRules,
+	ModelSelectionError,
+	openRunGitSourceStore,
+	type Resolution,
+	ReviewProviderError,
+	type ReviewReport,
+	ReviewRuleFilterError,
+	ReviewTargetError,
+	resolveChangeScope,
+	runReview,
+} from "@getstandards/core";
+import { errorMessage } from "@getstandards/core/internal";
 import { resolveAuthFilePath } from "../../credentials/auth-file-location.js";
 import { createStandardsModels } from "../../credentials/models-runtime.js";
-import { ModelSelectionError } from "../../review/model-selection.js";
-import { ReviewProviderError } from "../../review/review-agent.js";
-import type { ReviewReport } from "../../review/review-report.js";
-import { ReviewTargetError } from "../../review/review-target.js";
-import { runReview } from "../../review/run-review.js";
-import { errorMessage } from "../../utils/errors.js";
-import { runGit } from "../../utils/git.js";
 import type { ReviewCliArgs } from "../cli-args.js";
 import type { CommandContext } from "../cli-context.js";
 import {
@@ -20,14 +25,6 @@ import {
 import { createReviewSpinner, formatStepProgress } from "./review-spinner.js";
 import { renderVerboseLineTerminal } from "./review-verbose.js";
 import { formatValidationError } from "./validate-diagnostic.js";
-
-/** The review could not run: its diagnostic is ready to print (specs/cli.md). */
-class ReviewInputError extends Error {
-	public constructor(diagnostic: string) {
-		super(diagnostic);
-		this.name = "ReviewInputError";
-	}
-}
 
 /**
  * Run the review pipeline for the repository in the working directory
@@ -44,13 +41,9 @@ export async function runReviewCommand(
 ): Promise<number> {
 	const { workingDirectory, output, environment, settings } = context;
 
-	let baseRevision: string;
-	let headRevision: string;
+	let scope: ChangeScope;
 	try {
-		({ baseRevision, headRevision } = await resolveReviewRevisions(
-			workingDirectory,
-			options,
-		));
+		scope = await resolveChangeScope(workingDirectory, options);
 	} catch (error) {
 		output.error(errorMessage(error));
 		return 2;
@@ -66,9 +59,9 @@ export async function runReviewCommand(
 	const reportImportProgress = createImportProgressReporter((line) =>
 		output.error(line),
 	);
-	let ruleSet: Rule[];
+	let loaded: Resolution;
 	try {
-		ruleSet = await loadRules(workingDirectory, {
+		loaded = await loadRules(workingDirectory, {
 			gitSourceStore,
 			reportProgress: reportImportProgress,
 		});
@@ -77,6 +70,26 @@ export async function runReviewCommand(
 		return 2;
 	} finally {
 		await gitSourceStore.dispose();
+	}
+
+	// '--rule' and '--folder' shrink the rule set before the pipeline runs, so
+	// the report's resolved_rules count reflects the filtered set.
+	let resolution: Resolution;
+	try {
+		resolution = {
+			...loaded,
+			rules: filterRuleSet(loaded.rules, {
+				rule: options.rule,
+				folder: options.folder,
+			}),
+		};
+	} catch (error) {
+		output.error(
+			error instanceof ReviewRuleFilterError
+				? error.diagnostic
+				: errorMessage(error),
+		);
+		return 2;
 	}
 
 	const { models } = createStandardsModels({
@@ -101,11 +114,10 @@ export async function runReviewCommand(
 	let report: ReviewReport;
 	try {
 		report = await runReview({
-			baseRevision,
-			headRevision,
+			scope,
 			workingDirectory,
 			targets: options.targets,
-			ruleSet,
+			resolution,
 			models,
 			modelOptions: {
 				model: options.model,
@@ -133,97 +145,14 @@ export async function runReviewCommand(
 		return 2;
 	}
 	spinner?.stop();
-	output.log(
-		options.format === "json"
-			? JSON.stringify(report, undefined, "\t")
-			: context.interactive
-				? renderReviewReportTerminal(report)
-				: renderReviewReportText(report),
-	);
+	if (options.format === "json") {
+		output.log(JSON.stringify(report, undefined, "\t"));
+	} else if (context.interactive) {
+		output.log(renderReviewReportTerminal(report));
+	} else {
+		output.log(renderReviewReportText(report));
+	}
 	return report.conclusion === "compliant" ? 0 : 1;
-}
-
-/** The resolved base and head commits of one review (specs/cli.md review). */
-interface ReviewRevisions {
-	baseRevision: string;
-	headRevision: string;
-}
-
-/**
- * Resolve the head and base revisions (specs/cli.md review).
- *
- * The head revision is the checkout's HEAD. The base revision is the empty
- * tree with `--all`, the `--base` revision when given, and the merge base of
- * HEAD and the remote default branch otherwise.
- */
-async function resolveReviewRevisions(
-	workingDirectory: string,
-	options: ReviewCliArgs,
-): Promise<ReviewRevisions> {
-	let headRevision: string;
-	try {
-		headRevision = await runGit(
-			["rev-parse", "--verify", "HEAD"],
-			workingDirectory,
-		);
-	} catch (error) {
-		throw new ReviewInputError(`Standards review could not run.
-
-Problem:
-  Cannot resolve the head revision HEAD: ${errorMessage(error)}
-
-Next action:
-  Run 'standards review' inside a Git repository with at least one commit.`);
-	}
-
-	if (options.all) {
-		// The hash of the empty tree, computed so it matches the repository's
-		// object format (SHA-1 or SHA-256).
-		const emptyTree = await runGit(
-			["hash-object", "-t", "tree", "/dev/null"],
-			workingDirectory,
-		);
-		return { baseRevision: emptyTree, headRevision };
-	}
-
-	if (options.base !== undefined) {
-		try {
-			const baseRevision = await runGit(
-				["rev-parse", "--verify", `${options.base}^{commit}`],
-				workingDirectory,
-			);
-			return { baseRevision, headRevision };
-		} catch (error) {
-			throw new ReviewInputError(`Standards review could not run.
-
-Problem:
-  Cannot resolve the base revision '${options.base}': ${errorMessage(error)}
-
-Next action:
-  Give --base a revision that Git can resolve in this repository.`);
-		}
-	}
-
-	try {
-		const remoteDefaultBranch = await runGit(
-			["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-			workingDirectory,
-		);
-		const baseRevision = await runGit(
-			["merge-base", "HEAD", remoteDefaultBranch],
-			workingDirectory,
-		);
-		return { baseRevision, headRevision };
-	} catch {
-		throw new ReviewInputError(`Standards review could not run.
-
-Problem:
-  Cannot resolve the merge base of HEAD and the remote default branch.
-
-Next action:
-  Give a base revision with --base <revision>, or run a full review with
-  --all.`);
-	}
 }
 
 /** Format a review failure; a failed review reports no conclusion. */
@@ -238,7 +167,7 @@ Problem:
   ${error.message}
 
 Next action:
-  Give a target path that exists in the head revision.`;
+  Give a target path that exists in ${error.place}.`;
 	}
 	if (error instanceof ReviewProviderError) {
 		return `Standards review failed and reports no conclusion.

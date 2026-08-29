@@ -12,8 +12,8 @@ import type {
 	CredentialInfo,
 	CredentialStore,
 } from "@earendil-works/pi-ai";
+import { errorMessage, isMissingFileError } from "@getstandards/core/internal";
 import { z } from "zod/v4";
-import { errorMessage, isMissingFileError } from "../utils/errors.js";
 import { withAuthFileLock } from "./auth-file-lock.js";
 
 /**

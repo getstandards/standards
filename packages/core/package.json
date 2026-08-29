@@ -1,0 +1,59 @@
+{
+	"name": "@getstandards/core",
+	"version": "0.2.0",
+	"description": "The Standards core library: resolution, the review pipeline, and their types",
+	"type": "module",
+	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
+	"publishConfig": {
+		"access": "public"
+	},
+	"exports": {
+		".": "./dist/index.js",
+		"./internal": "./dist/internal.js",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "tsc --project tsconfig.build.json",
+		"check": "biome check src package.json tsconfig.json tsconfig.build.json && tsc --noEmit",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"standards",
+		"code-review",
+		"ai-code-review",
+		"rfc2119",
+		"governance",
+		"policy-as-code",
+		"engineering-standards",
+		"llm",
+		"agent"
+	],
+	"dependencies": {
+		"@earendil-works/pi-ai": "^0.84.2",
+		"picomatch": "^4.0.5",
+		"yaml": "^2.9.0",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.8",
+		"@types/node": "^26.2.0",
+		"@types/picomatch": "^4.0.3",
+		"typescript": "^7.0.2",
+		"vitest": "^4.1.10"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/getstandards/standards.git"
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/getstandards/standards/issues"
+	},
+	"engines": {
+		"node": "^24.11.0",
+		"pnpm": "^11.0.0"
+	},
+	"files": [
+		"dist"
+	]
+}

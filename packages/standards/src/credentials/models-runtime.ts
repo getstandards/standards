@@ -8,7 +8,7 @@ import {
 	InMemoryCredentialStore,
 } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { nonEmptyEnvironmentValue } from "../utils/environment.js";
+import { nonEmptyEnvironmentValue } from "@getstandards/core/internal";
 import { createAuthJsonStore } from "./auth-json-store.js";
 
 /** Runtime values used to build the interactive Standards Models collection. */
