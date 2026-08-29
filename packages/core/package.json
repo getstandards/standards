@@ -1,6 +1,6 @@
 {
 	"name": "@getstandards/core",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "The Standards core library: resolution, the review pipeline, and their types",
 	"type": "module",
 	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",
