@@ -1,6 +1,6 @@
 {
 	"name": "@getstandards/pi",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Run a Standards review from inside the pi coding agent",
 	"type": "module",
 	"author": "Nicolas Lecoy <nicolas.lecoy@gmail.com>",

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.0](https://github.com/getstandards/standards/compare/0.2.0...0.3.0) (2026-08-29)
+
+
+### Features
+
+* read rules from OKF knowledge documents, splits the core and add the pi extension ([#41](https://github.com/getstandards/standards/issues/41)) ([e31a226](https://github.com/getstandards/standards/commit/e31a226c9a736dddc67626bda771b34b3e2887f6))
+
+
+### Continuous Integration
+
+* rebuild the action bundle in Renovate commits ([#29](https://github.com/getstandards/standards/issues/29)) ([6dff15b](https://github.com/getstandards/standards/commit/6dff15b06f87a0d742534f056d7c2e319678595a))
+
+
+### Miscellaneous Chores
+
+* **agents:** remove unused skill ([4cff4aa](https://github.com/getstandards/standards/commit/4cff4aaed9b932e61bd9e9a516ff9b4da0493d2d))
+* **deps:** update dependency @astrojs/starlight to v0.41.8 ([#31](https://github.com/getstandards/standards/issues/31)) ([b521f03](https://github.com/getstandards/standards/commit/b521f034041bd757271c30f74f38140b2ee7b574))
+* **deps:** update dependency @astrojs/starlight to v0.41.9 ([#35](https://github.com/getstandards/standards/issues/35)) ([7193945](https://github.com/getstandards/standards/commit/7193945cdc801e2a7685f702858c0e7b45fe7742))
+* **deps:** update dependency @types/node to v26.3.0 ([#32](https://github.com/getstandards/standards/issues/32)) ([5986d65](https://github.com/getstandards/standards/commit/5986d6508fd229a68cb7da116b2fe38f62d8ac6b))
+* **deps:** update dependency astro to v7.2.6 ([#27](https://github.com/getstandards/standards/issues/27)) ([a7188bf](https://github.com/getstandards/standards/commit/a7188bf4337678945194106a866efb5f1e8bc66a))
+* **deps:** update dependency astro to v7.2.7 ([#36](https://github.com/getstandards/standards/issues/36)) ([8e19b4d](https://github.com/getstandards/standards/commit/8e19b4d6006eb4fb6510e6bb02adff0bb95a77d3))
+* **deps:** update dependency picomatch to v4.0.7 ([#26](https://github.com/getstandards/standards/issues/26)) ([eb5ca33](https://github.com/getstandards/standards/commit/eb5ca334c72a33396929c1151e5096d1091c7e39))
+* **deps:** update getstandards/standards action to v0.2.0 ([#34](https://github.com/getstandards/standards/issues/34)) ([2efc960](https://github.com/getstandards/standards/commit/2efc960374cac32f17fa261b53ed68384a145e44))
+* **deps:** update jdx/mise-action action to v4.3.0 ([#33](https://github.com/getstandards/standards/issues/33)) ([50b1a06](https://github.com/getstandards/standards/commit/50b1a061c5075f6edc9150559bb6c879eedc8914))
+* **deps:** update node.js to v24.20.0 ([#37](https://github.com/getstandards/standards/issues/37)) ([ccbf3d2](https://github.com/getstandards/standards/commit/ccbf3d2592d5a30f5d56bbee6ec82a8d0a1ee0b1))
+* **deps:** update pnpm to v11.24.0 ([#28](https://github.com/getstandards/standards/issues/28)) ([cfbccb8](https://github.com/getstandards/standards/commit/cfbccb83308eb0aa7859a3da6bf352138ba9327e))
+* update README ([8446af9](https://github.com/getstandards/standards/commit/8446af9b54d7d0a34e1111c5ecf527e814957f97))
+
 ## [0.2.0](https://github.com/getstandards/standards/compare/0.1.1...0.2.0) (2026-08-25)
 
 
