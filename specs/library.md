@@ -54,8 +54,8 @@ name it exports is a compatibility contract:
   `ChangeScopeOptions` types, and `ReviewInputError`.
 - Rule set filters: `filterRuleSet` and `ReviewRuleFilterError`.
 - Review: `runReview`, the `RunReviewInput` type, the report types, and the
-  failure types `ModelSelectionError`, `ReviewProviderError`, and
-  `ReviewTargetError`.
+  failure types `ModelSelectionError`, `ReviewConcurrencyError`,
+  `ReviewProviderError`, and `ReviewTargetError`.
 - The models runtime interface, `ReviewModels`.
 - The source cache a run needs: `openRunGitSourceStore` and
   `createImportProgressReporter`.
@@ -65,9 +65,9 @@ name it exports is a compatibility contract:
 The second entry point, `@getstandards/core/internal`, holds what the
 first-party command line needs beyond that surface: the cache store the
 `standards cache` command manages, the configuration schema, the knowledge
-document parser, and shared Git, YAML, and error helpers. It carries no
-compatibility promise. A consumer outside this repository MUST use
-`@getstandards/core`.
+document parser, the concurrency value rule the `--concurrency` option shares,
+and shared Git, YAML, and error helpers. It carries no compatibility promise.
+A consumer outside this repository MUST use `@getstandards/core`.
 
 The core MUST NOT export prompt text, task packing, or the agent loop. A name
 enters either entry point when a consumer needs it, not before: an unused
@@ -80,7 +80,9 @@ discovery and returns the resolution: the ordered rules, the resolved Git
 commits, and the warnings.
 
 `runReview(input)` receives the resolution, one change scope, the targets, the
-model selection options, and a models runtime, and returns the report.
+model selection options, the concurrency limit, and a models runtime, and
+returns the report. The limit is specified in
+[Standards review concurrency](./concurrency.md).
 
 - `runReview` MUST accept an `AbortSignal`, so a host can cancel a review that
   is spending tokens.

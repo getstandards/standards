@@ -12,6 +12,10 @@ export const standardsSettingsSchema = z
 		model: modelReferenceSchema.optional(),
 		evaluation_model: modelReferenceSchema.optional(),
 		verification_model: modelReferenceSchema.optional(),
+		concurrency: z
+			.int("Expected an integer greater than or equal to 1.")
+			.min(1, "Expected an integer greater than or equal to 1.")
+			.optional(),
 	})
 	.strict();
 

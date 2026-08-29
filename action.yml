@@ -25,6 +25,12 @@ inputs:
   verification-model:
     description: "Model reference forwarded as STANDARDS_VERIFICATION_MODEL."
     required: false
+  concurrency:
+    description: >-
+      Maximum count of agent invocations that run at the same time, forwarded
+      as STANDARDS_CONCURRENCY. An integer greater than or equal to 1.
+      Defaults to 4.
+    required: false
   provider-env:
     description: >-
       Names of extra environment variables, separated by spaces or commas,

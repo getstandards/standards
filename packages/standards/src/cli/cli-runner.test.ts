@@ -921,6 +921,24 @@ status: stable
 			);
 		});
 
+		it.each(["0", "1.5", "many"])(
+			"rejects the concurrency limit %s",
+			async (concurrency) => {
+				const { output, stderr } = captureOutput();
+
+				const exitStatus = await runCli(
+					["review", "--concurrency", concurrency],
+					"/unused",
+					output,
+				);
+
+				expect(exitStatus).toBe(2);
+				expect(stderr[0]).toContain(
+					`Option '--concurrency' expects an integer greater than or equal to 1, not '${concurrency}'.`,
+				);
+			},
+		);
+
 		it("rejects review options on other commands", async () => {
 			const { output, stderr } = captureOutput();
 

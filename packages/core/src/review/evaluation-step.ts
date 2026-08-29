@@ -9,6 +9,7 @@ import type { ChangedFile } from "./change-diff.js";
 import type { EvaluationTask } from "./evaluation-plan.js";
 import type { Finding } from "./finding.js";
 import { runReviewAgent } from "./review-agent.js";
+import { mapWithConcurrency } from "./review-concurrency.js";
 import type { ReviewModels } from "./review-models.js";
 import type { FileSelection } from "./rule-selection.js";
 import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
@@ -108,6 +109,8 @@ export interface EvaluationInput {
 	model: Model<Api>;
 	tasks: readonly EvaluationTask[];
 	headCheckoutDir: string;
+	/** The maximum count of agent invocations in flight (specs/concurrency.md). */
+	concurrency: number;
 	reportVerbose?: (line: string) => void;
 	/** Receives the count of finished tasks, for a live progress display. */
 	reportStepProgress?: (progress: ReviewStepProgress) => void;
@@ -123,9 +126,10 @@ export interface EvaluationOutput {
 /**
  * Run the evaluation step (specs/review.md step 3).
  *
- * Each task runs as one independent agent invocation. Tasks may run
- * concurrently. A provider failure in any task fails the whole step, so the
- * review never reports a conclusion from a change it did not fully evaluate.
+ * Each task runs as one independent agent invocation. Tasks run concurrently,
+ * bounded by the concurrency limit (specs/concurrency.md). A provider failure
+ * in any task fails the whole step, so the review never reports a conclusion
+ * from a change it did not fully evaluate.
  */
 export async function runEvaluation(
 	input: EvaluationInput,
@@ -136,8 +140,10 @@ export async function runEvaluation(
 		input.reportStepProgress,
 	);
 
-	const results = await Promise.all(
-		input.tasks.map(async (task, index) => {
+	const results = await mapWithConcurrency(
+		input.tasks,
+		input.concurrency,
+		async (task, index) => {
 			const paths = task.files.map((file) => file.file.path).join(", ");
 			input.reportVerbose?.(
 				`Evaluating task ${index + 1}/${input.tasks.length}: ${paths}.`,
@@ -157,7 +163,7 @@ export async function runEvaluation(
 
 			reportTaskFinished();
 			return result;
-		}),
+		},
 	);
 
 	let usage = emptyStepUsage();

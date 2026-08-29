@@ -12,6 +12,7 @@ Canonical words used across Standards code and documentation.
 - **cache read tokens** — The input tokens of a step that the provider served from its prompt cache, reported as `cache_read_tokens`.
 - **cache write tokens** — The input tokens of a step that the provider wrote to its prompt cache, reported as `cache_write_tokens`.
 - **check run** — The GitHub check named `Standards` that one action run creates for the head commit and completes with the conclusion and the report.
+- **concurrency limit** — The maximum count of review agent invocations that run at the same time. The `--concurrency` option, the `STANDARDS_CONCURRENCY` environment variable, and the `concurrency` settings field set it; the default is `4`.
 - **configuration** — The validated `.standards.yml` document (`version` and `sources`).
 - **cost** — The model spend of a review in United States dollars, computed by the provider SDK from its per-request rates. The report carries one `cost` per step and their sum as `total_cost`.
 - **core** — The `@getstandards/core` package: resolution, the review pipeline, and their types. It holds no credential code. Every Standards surface runs the same review through it.

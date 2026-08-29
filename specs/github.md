@@ -100,6 +100,7 @@ token the same.
 | `model` | No | Model reference forwarded as `STANDARDS_MODEL`. |
 | `evaluation-model` | No | Model reference forwarded as `STANDARDS_EVALUATION_MODEL`. |
 | `verification-model` | No | Model reference forwarded as `STANDARDS_VERIFICATION_MODEL`. |
+| `concurrency` | No | Concurrency limit forwarded as `STANDARDS_CONCURRENCY`. See [Standards review concurrency](./concurrency.md). |
 | `provider-env` | No | Names of extra provider credential variables, separated by spaces or commas. The action forwards each named variable from the step environment to the review. |
 
 The action is a thin surface: each input maps to one environment variable of

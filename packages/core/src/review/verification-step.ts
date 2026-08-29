@@ -8,6 +8,7 @@ import {
 import type { Finding } from "./finding.js";
 import { readHeadFileLines, readHeadRegion } from "./read-head-file.js";
 import { runReviewAgent } from "./review-agent.js";
+import { mapWithConcurrency } from "./review-concurrency.js";
 import type { ReviewModels } from "./review-models.js";
 import { type ReviewStepProgress, startStepProgress } from "./step-progress.js";
 
@@ -61,6 +62,8 @@ export interface VerificationInput {
 	findings: readonly Finding[];
 	ruleSet: readonly Rule[];
 	headCheckoutDir: string;
+	/** The maximum count of agent invocations in flight (specs/concurrency.md). */
+	concurrency: number;
 	reportVerbose?: (line: string) => void;
 	/** Receives the count of finished findings, for a live progress display. */
 	reportStepProgress?: (progress: ReviewStepProgress) => void;
@@ -84,10 +87,10 @@ interface VerdictDecision {
  *
  * It deduplicates the findings deterministically, drops a candidate suggested
  * change that the head revision cannot support, then re-checks each remaining
- * finding as one independent agent invocation with fresh context. A finding
- * the verifier rejects is dropped; a suggested change the verifier does not
- * accept is removed while its confirmed finding remains. A provider failure
- * fails the whole step.
+ * finding as one independent agent invocation with fresh context, bounded by
+ * the concurrency limit (specs/concurrency.md). A finding the verifier rejects
+ * is dropped; a suggested change the verifier does not accept is removed while
+ * its confirmed finding remains. A provider failure fails the whole step.
  */
 export async function runVerification(
 	input: VerificationInput,
@@ -115,8 +118,10 @@ export async function runVerification(
 		candidates.length,
 		input.reportStepProgress,
 	);
-	const results = await Promise.all(
-		candidates.map(async ({ finding, rule }, index) => {
+	const results = await mapWithConcurrency(
+		candidates,
+		input.concurrency,
+		async ({ finding, rule }, index) => {
 			reportVerbose?.(
 				`Verifying finding ${index + 1}/${candidates.length}: ${findingLabel(finding)}.`,
 			);
@@ -153,7 +158,7 @@ export async function runVerification(
 				decision: result.output,
 				usage: result.usage,
 			};
-		}),
+		},
 	);
 
 	let usage = emptyStepUsage();

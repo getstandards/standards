@@ -23,6 +23,7 @@ export {
 	configurationSchema,
 	requirementLevels,
 } from "./config/configuration-schema.js";
+export { parseConcurrencyLimit } from "./review/review-concurrency.js";
 export { ENTRY_FILE_NAMES, findEntryFile } from "./rules/rules-loader.js";
 export {
 	nonEmptyEnvironmentValue,

@@ -40,6 +40,7 @@ export {
 } from "./review/model-selection.js";
 export type { ReviewProviderErrorKind } from "./review/review-agent.js";
 export { ReviewProviderError } from "./review/review-agent.js";
+export { ReviewConcurrencyError } from "./review/review-concurrency.js";
 export type {
 	ReviewCompleteOptions,
 	ReviewModels,

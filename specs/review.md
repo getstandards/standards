@@ -284,9 +284,10 @@ auditable.
 ### Step 3: Evaluation
 
 Each evaluation task runs as one agent invocation. Tasks are independent and
-MAY run concurrently. The implementation MAY report the count of finished
-tasks while the step runs, so an interactive surface can show a loading
-status.
+MAY run concurrently, bounded by the concurrency limit defined in
+[Standards review concurrency](./concurrency.md). The implementation MAY
+report the count of finished tasks while the step runs, so an interactive
+surface can show a loading status.
 
 The agent receives:
 
@@ -373,8 +374,10 @@ Each remaining finding runs as one independent agent invocation with fresh
 context: the rule fields from evaluation, the finding, its candidate suggested
 change when present, and the code region around `lines`. The verifier does not
 receive the evaluation task's other rules, files, or findings. The
-implementation MAY report the count of finished findings while the step runs,
-so an interactive surface can show a loading status.
+invocations MAY run concurrently, bounded by the concurrency limit defined in
+[Standards review concurrency](./concurrency.md). The implementation MAY
+report the count of finished findings while the step runs, so an interactive
+surface can show a loading status.
 
 Before the invocation, deterministic code MUST remove a candidate suggested
 change when the file does not exist in the head revision, the line range is not
